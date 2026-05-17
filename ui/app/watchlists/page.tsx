@@ -7,7 +7,7 @@ import { getMarkets } from "@/lib/data";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Watchlists · Hunch",
+  title: "Watchlists · Auspex",
   description: "Your starred crypto-vertical prediction markets.",
 };
 

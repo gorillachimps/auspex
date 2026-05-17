@@ -7,8 +7,8 @@ import { OrdersView } from "@/components/OrdersView";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Orders · Hunch",
-  description: "Your open Polymarket orders, attributed to the Hunch builder code.",
+  title: "Orders · Auspex",
+  description: "Your open Polymarket orders, attributed to the Auspex builder code.",
 };
 
 export default function OrdersPage() {

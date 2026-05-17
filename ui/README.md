@@ -1,6 +1,6 @@
-# Hunch · UI
+# Auspex · UI
 
-Next.js 16 app for the Hunch crypto-bet screener (Polymarket-backed under the
+Next.js 16 app for the Auspex crypto-bet screener (Polymarket-backed under the
 hood). Reads from the Phase 0 data pipeline at `../data/enriched-markets.json`
 and surfaces it as a sortable table with Δ-to-trigger and Resolution
 Confidence (RC) bars, expand-to-detail rows, per-market detail pages,

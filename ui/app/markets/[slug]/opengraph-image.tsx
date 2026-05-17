@@ -9,7 +9,7 @@ import {
 } from "@/lib/format";
 import { summarizeRules } from "@/lib/rules";
 
-export const alt = "Hunch market";
+export const alt = "Auspex market";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -107,7 +107,7 @@ export default async function Image({
             H
           </div>
           <span style={{ display: "flex", fontWeight: 700, color: "#e6e8ee" }}>
-            Hunch
+            Auspex
           </span>
           <span
             style={{

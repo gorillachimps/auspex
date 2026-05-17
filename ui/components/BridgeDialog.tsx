@@ -239,7 +239,7 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
           kind: "success",
           fillTxHash: result.fillTxReceipt.transactionHash,
         });
-        toast.success("Bridge complete — USDC arrived, ready to trade on Hunch");
+        toast.success("Bridge complete — USDC arrived, ready to trade on Auspex");
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Bridge failed";
@@ -273,7 +273,7 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
               id="bridge-dialog-title"
               className="text-base font-semibold tracking-tight"
             >
-              Bridge funds to Hunch
+              Bridge funds to Auspex
             </h2>
             <p className="mt-1 text-[12px] leading-relaxed text-muted">
               Sends USDC straight to your trading account on Polygon — usually
@@ -455,7 +455,7 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
           <div className="mt-3 rounded-md border border-emerald-400/30 bg-emerald-500/5 px-3 py-2">
             <div className="flex items-center gap-2 text-[11px] text-emerald-300">
               <Check className="h-3 w-3" aria-hidden="true" />
-              <span>USDC arrived. You can start trading on Hunch.</span>
+              <span>USDC arrived. You can start trading on Auspex.</span>
             </div>
             {status.fillTxHash ? (
               <a

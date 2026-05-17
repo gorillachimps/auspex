@@ -3,9 +3,9 @@ import { TopNav } from "@/components/TopNav";
 import { Footer } from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: "Docs · Hunch",
+  title: "Docs · Auspex",
   description:
-    "How Hunch scores Polymarket crypto markets — Resolution Confidence, distance to trigger, families, and data sources.",
+    "How Auspex scores Polymarket crypto markets — Resolution Confidence, distance to trigger, families, and data sources.",
 };
 
 export default function DocsPage() {
@@ -23,7 +23,7 @@ export default function DocsPage() {
           <Section id="signal" title="Resolution-source-as-signal">
             <p>
               Most prediction-market screeners stop at price feeds and order-book
-              depth. Hunch looks one layer deeper:{" "}
+              depth. Auspex looks one layer deeper:{" "}
               <strong className="text-foreground">
                 we read the live state of each market&apos;s own stated resolution
                 criterion
@@ -170,20 +170,20 @@ export default function DocsPage() {
               Limit and market orders are both supported; market orders show
               an estimated fill price and slippage computed against the live
               order book. Maker and taker fees are{" "}
-              <strong className="text-foreground">0% / 0%</strong> — Hunch adds
+              <strong className="text-foreground">0% / 0%</strong> — Auspex adds
               nothing on top of the underlying venue.
             </p>
             <p className="mt-3">
               Orders are signed by your connected wallet (EIP-712) once per
               session and posted through your existing account at the venue.
-              Hunch never custodies funds and never moves anything outside an
+              Auspex never custodies funds and never moves anything outside an
               explicit signature from you.
             </p>
           </Section>
 
           <Section id="disclaimer" title="Disclaimer">
             <p className="text-muted">
-              Hunch is a presentation layer over publicly available data,
+              Auspex is a presentation layer over publicly available data,
               for informational purposes only. Nothing here is investment
               advice, a solicitation, or a recommendation. Prediction markets
               involve real money and real risk; only place orders you understand

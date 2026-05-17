@@ -92,7 +92,7 @@ export function MobileMarketList({ rows, sorting, onClearFilters }: Props) {
   function trade(id: string, outcome: "yes" | "no") {
     if (typeof window === "undefined") return;
     window.dispatchEvent(
-      new CustomEvent("hunch:open-ticket", {
+      new CustomEvent("auspex:open-ticket", {
         detail: { id, outcome },
       }),
     );

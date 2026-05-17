@@ -25,7 +25,7 @@ const FUND_THRESHOLD = BigInt(1_000_000);
  *   - both fine                  → banner hides entirely
  *
  * No external "approve on polymarket.com" link — both fixes happen in-app
- * so the user never has to leave hunch.to. This is the core funnel fix.
+ * so the user never has to leave auspex.to. This is the core funnel fix.
  */
 export function ApprovalBanner() {
   const session = useClobSession();
@@ -71,7 +71,7 @@ export function ApprovalBanner() {
             <span className="tabular text-amber-50">
               {fmtCollateral(allowance.balance)}
             </span>
-            . Bridge USDC in from any chain — Hunch never holds your funds.
+            . Bridge USDC in from any chain — Auspex never holds your funds.
           </span>
           <span className="ml-auto">
             <BridgeButton
@@ -97,7 +97,7 @@ export function ApprovalBanner() {
             {fmtCollateral(allowance.balance)}
           </span>
           . Approve pUSD spend so orders can route through your account. Signed
-          in your wallet — Hunch never moves funds.
+          in your wallet — Auspex never moves funds.
         </span>
         <button
           type="button"

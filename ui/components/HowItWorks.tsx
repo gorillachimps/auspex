@@ -44,7 +44,7 @@ export function HowItWorks() {
                 id="how-it-works-title"
                 className="text-lg font-semibold tracking-tight"
               >
-                How Hunch works
+                How Auspex works
               </h2>
               <button
                 type="button"
@@ -59,7 +59,7 @@ export function HowItWorks() {
             <Section title="Resolution-source-as-signal">
               <p>
                 Most prediction-market dashboards show implied % vs. an
-                external opinion model. Hunch reads each market&apos;s{" "}
+                external opinion model. Auspex reads each market&apos;s{" "}
                 <em>own stated resolution criterion</em> — the on-chain or
                 exchange feed it actually settles against — and shows the live
                 value next to the implied %. Your edge isn&apos;t our forecast;
@@ -115,9 +115,9 @@ export function HowItWorks() {
                 <span className="rounded-full bg-emerald-500/10 px-1.5 py-0 text-emerald-300 ring-1 ring-emerald-400/30">
                   0% / 0%
                 </span>{" "}
-                — Hunch adds nothing on top of the underlying venue. Orders are
+                — Auspex adds nothing on top of the underlying venue. Orders are
                 signed by your connected wallet and routed through your existing
-                account; Hunch never custodies funds.
+                account; Auspex never custodies funds.
               </p>
             </Section>
 

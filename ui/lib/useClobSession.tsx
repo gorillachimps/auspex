@@ -119,7 +119,7 @@ function useClobSessionState(): ClobSession {
           await wallet.switchChain(polygon.id);
         } catch (switchErr) {
           // eslint-disable-next-line no-console
-          console.warn("[hunch] wallet.switchChain failed:", switchErr);
+          console.warn("[auspex] wallet.switchChain failed:", switchErr);
         }
         if (cancelled) return;
         const provider = await wallet.getEthereumProvider();

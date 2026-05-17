@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Hunch",
-    short_name: "Hunch",
+    name: "Auspex",
+    short_name: "Auspex",
     description:
       "Crypto bets sorted by signal — distance to trigger and Resolution Confidence at a glance.",
     start_url: "/",

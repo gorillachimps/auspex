@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "Hunch · Watchlists";
+export const alt = "Auspex · Watchlists";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -39,7 +39,7 @@ export default function Image() {
             H
           </div>
           <span style={{ display: "flex", fontWeight: 700, fontSize: 32, color: "#e6e8ee" }}>
-            Hunch
+            Auspex
           </span>
           <span
             style={{
@@ -113,7 +113,7 @@ export default function Image() {
               letterSpacing: 1.5,
             }}
           >
-            hunch
+            auspex
           </span>
           <span>· crypto bets, sorted by signal</span>
         </div>

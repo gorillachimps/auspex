@@ -170,7 +170,7 @@ export function BuilderStatsView() {
       <div className="mt-8 rounded-md border border-border bg-surface/40 px-6 py-12 text-center">
         <h2 className="text-base font-semibold">No builder-attributed trades yet</h2>
         <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-          As soon as anyone places an order through this site with the Hunch
+          As soon as anyone places an order through this site with the Auspex
           builder code attached, attributed fills will show up here. Until then,
           this view is empty — that&apos;s the expected state at launch.
         </p>

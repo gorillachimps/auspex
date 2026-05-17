@@ -14,7 +14,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "Hunch — crypto bets, sorted by signal",
+  title: "Auspex — crypto bets, sorted by signal",
   description:
     "Crypto prediction markets scored by how close they are to triggering. Distance-to-trigger and Resolution Confidence at a glance.",
   manifest: "/manifest.webmanifest",

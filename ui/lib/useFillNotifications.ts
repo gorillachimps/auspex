@@ -5,7 +5,7 @@ import { useClobSession } from "./useClobSession";
 
 const POLL_MS = 30_000;
 const HOST = "https://data-api.polymarket.com";
-const STORAGE_KEY = "hunch:notify:enabled";
+const STORAGE_KEY = "auspex:notify:enabled";
 
 type Trade = {
   side?: "BUY" | "SELL";
@@ -36,7 +36,7 @@ export type NotificationPermissionState =
  *
  * Not a "real" Web Push notification — those need a Service Worker + a
  * server to send pushes when the tab is closed. This works only while a
- * Hunch tab is open; useful for active traders, useless for someone who
+ * Auspex tab is open; useful for active traders, useless for someone who
  * walks away.
  *
  * Enabling is opt-in. The user clicks the bell in the TopNav (or wherever

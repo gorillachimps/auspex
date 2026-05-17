@@ -1,7 +1,7 @@
-# Hunch — session handoff
+# Auspex — session handoff
 
-**Live:** https://hunch.to
-**Repo:** https://github.com/gorillachimps/hunch (public)
+**Live:** https://auspex.to
+**Repo:** https://github.com/gorillachimps/auspex (public)
 **Last touched:** 2026-05-16
 
 This doc is the single source of truth for state between sessions. Read top
@@ -11,7 +11,7 @@ to bottom on session start; update on session end.
 
 ## TL;DR
 
-Hunch is a Polymarket-backed crypto-bet screener at hunch.to. Builder-code
+Auspex is a Polymarket-backed crypto-bet screener at auspex.to. Builder-code
 attributed (SombreroStepover) for retro/airdrop farming, but the user-facing
 brand stands independent — Polymarket is disclosed in the footer only.
 
@@ -69,7 +69,7 @@ friend tested the onboarding flow and exposed gaps that we patched live.
 
 The factory at `0xD3447596d282d62bc94240d17caee437efcfde62` deploys
 DepositWallet proxies via `deploy(address[] _owners, bytes32[] _ids)`,
-called by a Polymarket-controlled EOA with custom salts. If Hunch calls it
+called by a Polymarket-controlled EOA with custom salts. If Auspex calls it
 ourselves with a different salt, we deploy a "rogue" proxy that Polymarket's
 own UI / backend won't recognize. User's funds land in a proxy invisible to
 polymarket.com — silent failure mode worse than the current "go to
@@ -220,9 +220,9 @@ session, switch from LI.FI to Across** (see plan below).
 ## Operational reference
 
 ### Production
-- Domain: hunch.to (Porkbun, expires 2027-05-15, WHOIS-private)
-- Host: Vercel Hobby, project `hunch` under "AC's projects"
-- GitHub: gorillachimps/hunch (public, unlimited Actions minutes)
+- Domain: auspex.to (Porkbun, expires 2027-05-15, WHOIS-private)
+- Host: Vercel Hobby, project `auspex` under "AC's projects"
+- GitHub: gorillachimps/auspex (public, unlimited Actions minutes)
 - Builder code: `0x1cc4300fca20eb0449c32d3c56d937d0a46e172d2707a62860b5f5311f2b608b`
 - Operator proxy: `0xb4fB45069b3f0F7C69937CA114849f5A8380DA04`
 - Operator EOA: `0xfEA773E782Bf72A3d1f7403bd243275221c24123` (for auto-detect
@@ -231,7 +231,7 @@ session, switch from LI.FI to Across** (see plan below).
 
 ### Vercel env vars (Production)
 - `NEXT_PUBLIC_PRIVY_APP_ID` — set
-- `NEXT_PUBLIC_SITE_URL=https://hunch.to`
+- `NEXT_PUBLIC_SITE_URL=https://auspex.to`
 - `NEXT_PUBLIC_POLYGON_RPC_URL` — public RPC, swap for Alchemy/QuickNode
   at scale
 - `POLYGONSCAN_API_KEY` — set (server-only, powers /api/find-proxy)
@@ -251,15 +251,15 @@ npm run build                     # includes prebuild that syncs ../data → ui/
 ### Quick verification commands
 ```bash
 # Auto-detect endpoint health
-curl -s 'https://hunch.to/api/find-proxy?eoa=0xfEA773E782Bf72A3d1f7403bd243275221c24123' | python3 -m json.tool
+curl -s 'https://auspex.to/api/find-proxy?eoa=0xfEA773E782Bf72A3d1f7403bd243275221c24123' | python3 -m json.tool
 # Expect: { "proxy": "0xb4fb45069b...", "count": 1, "factory": "0xd3447596..." }
 
 # Snapshot freshness
-curl -s 'https://hunch.to/api/health' | python3 -m json.tool
+curl -s 'https://auspex.to/api/health' | python3 -m json.tool
 # Expect: status "ok", snapshotAgeSeconds < 900
 
 # Workflow runs
-gh run list --workflow=data-refresh.yml --limit 5 --repo gorillachimps/hunch
+gh run list --workflow=data-refresh.yml --limit 5 --repo gorillachimps/auspex
 ```
 
 ---

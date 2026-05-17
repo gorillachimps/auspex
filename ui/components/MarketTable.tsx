@@ -70,8 +70,8 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
         });
       });
     }
-    window.addEventListener("hunch:focus-market", onFocus);
-    return () => window.removeEventListener("hunch:focus-market", onFocus);
+    window.addEventListener("auspex:focus-market", onFocus);
+    return () => window.removeEventListener("auspex:focus-market", onFocus);
   }, []);
 
   const columns = useMemo(
@@ -298,7 +298,7 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
           const open = (outcome: "yes" | "no") => {
             if (typeof window === "undefined" || !tradable) return;
             window.dispatchEvent(
-              new CustomEvent("hunch:open-ticket", {
+              new CustomEvent("auspex:open-ticket", {
                 detail: { id: r.id, outcome },
               }),
             );

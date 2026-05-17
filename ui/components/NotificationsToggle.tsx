@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
 /**
  * Small bell toggle for the TopNav. Click once to ask for browser notification
  * permission; once granted, every fill on the connected account pops a system
- * notification (while at least one Hunch tab is open). Click again to disable
+ * notification (while at least one Auspex tab is open). Click again to disable
  * — we just stop polling and pop a toast confirming.
  *
  * Hides entirely if the browser doesn't support Notification API.

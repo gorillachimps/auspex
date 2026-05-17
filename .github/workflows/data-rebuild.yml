@@ -49,9 +49,9 @@ jobs:
 
       - name: Commit if changed
         run: |
-          git config user.name "hunch-bot"
+          git config user.name "auspex-bot"
           # Use the repo owner's GitHub-attributable noreply so Vercel accepts
-          # the auto-deploy triggered by this commit. A bare `hunch-bot@…` email
+          # the auto-deploy triggered by this commit. A bare `auspex-bot@…` email
           # doesn't map to any GitHub account, and Vercel blocks unverifiable
           # authors by default on the Hobby plan.
           git config user.email "96061296+gorillachimps@users.noreply.github.com"

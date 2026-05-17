@@ -13,7 +13,7 @@ type Props = {
 export default function ErrorBoundary({ error, unstable_retry }: Props) {
   useEffect(() => {
     // eslint-disable-next-line no-console
-    console.error("[hunch] route error", error);
+    console.error("[auspex] route error", error);
   }, [error]);
 
   return (

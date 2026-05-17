@@ -243,8 +243,8 @@ export function DepositWalletDialog({
               Almost ready
             </h2>
             <p className="mt-1 text-[12px] leading-relaxed text-muted">
-              Hunch routes orders through your existing Polymarket account.
-              Link it once — no funds move into Hunch.
+              Auspex routes orders through your existing Polymarket account.
+              Link it once — no funds move into Auspex.
             </p>
           </div>
           <button

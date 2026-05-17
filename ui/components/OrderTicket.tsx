@@ -658,7 +658,7 @@ export function OrderTicket({
               </div>
               <div className="text-amber-200/80">
                 One-time on-chain transaction signed by your connected wallet.
-                Hunch never custodies funds.
+                Auspex never custodies funds.
               </div>
             </div>
             <button

@@ -23,7 +23,7 @@ type Props = {
 /**
  * Opens Jumper.exchange (LI.FI's hosted bridge UI) in a new tab with the
  * destination chain (Polygon), token (USDC.e), and recipient address
- * pre-selected in the URL. Hunch stays open in the original tab.
+ * pre-selected in the URL. Auspex stays open in the original tab.
  *
  * Why a new-tab hand-off rather than an in-page iframe or the @lifi/widget
  * npm package:
@@ -39,7 +39,7 @@ type Props = {
  *     funds to the wrong account.
  *
  * If we ever want a truly embedded experience, the right path is option C
- * from the bridge spec: a Hunch-controlled UI built on top of LI.FI's SDK
+ * from the bridge spec: a Auspex-controlled UI built on top of LI.FI's SDK
  * (not the widget) — that's a half-day build that needs careful testing
  * with real funds across chains.
  */

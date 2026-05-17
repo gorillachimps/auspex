@@ -110,8 +110,8 @@ export function Screener({ rows }: Props) {
       if (isStarredOn && !starred.has(id)) setStarredFlag(null, { shallow: true });
       if (isLiveOn && target.liveState !== "live") setLiveFlag(null, { shallow: true });
     }
-    window.addEventListener("hunch:focus-market", onFocus);
-    return () => window.removeEventListener("hunch:focus-market", onFocus);
+    window.addEventListener("auspex:focus-market", onFocus);
+    return () => window.removeEventListener("auspex:focus-market", onFocus);
   }, [rowsWithLive, active, search, ticker, isStarredOn, starred, isLiveOn, setActive, setSearch, setTicker, setStarredFlag, setLiveFlag]);
 
   const counts = useMemo(() => {
@@ -171,8 +171,8 @@ export function Screener({ rows }: Props) {
       if (!market) return;
       setTicket({ market, outcome: detail.outcome });
     }
-    window.addEventListener("hunch:open-ticket", onOpen);
-    return () => window.removeEventListener("hunch:open-ticket", onOpen);
+    window.addEventListener("auspex:open-ticket", onOpen);
+    return () => window.removeEventListener("auspex:open-ticket", onOpen);
   }, [rowsWithLive]);
 
   const resetAll = useCallback(() => {

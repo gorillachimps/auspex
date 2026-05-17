@@ -20,7 +20,7 @@ function clamp01(n: number) {
 function dispatchFocus(id: string) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
-    new CustomEvent("hunch:focus-market", { detail: id }),
+    new CustomEvent("auspex:focus-market", { detail: id }),
   );
 }
 

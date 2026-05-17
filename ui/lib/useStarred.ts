@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 // starred markets under the previous name don't lose their watchlists on
 // upgrade. The user-facing event name is renamed.
 const STORAGE_KEY = "polycrypto.watchlist.v1";
-const CHANGE_EVENT = "hunch:starred-changed";
+const CHANGE_EVENT = "auspex:starred-changed";
 
 function readSet(): Set<string> {
   if (typeof window === "undefined") return new Set();

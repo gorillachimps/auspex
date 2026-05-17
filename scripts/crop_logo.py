@@ -1,4 +1,4 @@
-"""Crop the top-left magic-wand icon from the Hunch logos composite, convert
+"""Crop the top-left magic-wand icon from the Auspex logos composite, convert
 its white background to transparency with anti-aliased edges, and save it as
 the site logo.
 

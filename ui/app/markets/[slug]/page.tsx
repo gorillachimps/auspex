@@ -34,9 +34,9 @@ type Props = { params: Promise<{ slug: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const row = await getMarketBySlug(slug);
-  if (!row) return { title: "Market not found · Hunch" };
+  if (!row) return { title: "Market not found · Auspex" };
   return {
-    title: `${row.question} · Hunch`,
+    title: `${row.question} · Auspex`,
     description: summarizeRules(row),
   };
 }
@@ -78,7 +78,7 @@ export default async function MarketDetailPage({ params }: Props) {
             </div>
             <ShareButtons
               text={buildShareText(row)}
-              url={`${process.env.NEXT_PUBLIC_SITE_URL ?? "https://hunch.to"}/markets/${row.slug}`}
+              url={`${process.env.NEXT_PUBLIC_SITE_URL ?? "https://auspex.to"}/markets/${row.slug}`}
             />
           </div>
           <h1 className="mt-2 text-2xl font-semibold leading-tight tracking-tight">
@@ -191,7 +191,7 @@ export default async function MarketDetailPage({ params }: Props) {
             <DisqusComments
               identifier={row.slug}
               title={row.question}
-              url={`${process.env.NEXT_PUBLIC_SITE_URL ?? "https://hunch.to"}/markets/${row.slug}`}
+              url={`${process.env.NEXT_PUBLIC_SITE_URL ?? "https://auspex.to"}/markets/${row.slug}`}
             />
           </div>
 

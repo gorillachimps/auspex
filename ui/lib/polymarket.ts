@@ -11,7 +11,7 @@ import {
 } from "@polymarket/clob-client-v2";
 import type { WalletClient } from "viem";
 
-/** Hunch builder code (bytes32). Registered 2026-05-06.
+/** Auspex builder code (bytes32). Registered 2026-05-06.
  *  Operator wallet (proxy): 0xb4fb45069b3f0f7c69937ca114849f5a8380da04 */
 export const BUILDER_CODE =
   "0x1cc4300fca20eb0449c32d3c56d937d0a46e172d2707a62860b5f5311f2b608b";
@@ -25,7 +25,7 @@ export const POLYMARKET_CHAIN: Chain = Chain.POLYGON;
 // renamed to the new brand namespace.
 const CREDS_STORAGE_PREFIX = "polycrypto.creds.v1.";
 const FUNDER_STORAGE_PREFIX = "polycrypto.funder.v1.";
-const FUNDER_CHANGE_EVENT = "hunch:funder-changed";
+const FUNDER_CHANGE_EVENT = "auspex:funder-changed";
 
 /** ClobClient cannot be constructed in a Server Component / SSR pass — guard it. */
 function ensureClient() {

@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { getMarkets, getSnapshotMeta } from "@/lib/data";
 
-export const alt = "Hunch — crypto bets sorted by signal";
+export const alt = "Auspex — crypto bets sorted by signal";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -55,7 +55,7 @@ export default async function Image() {
             H
           </div>
           <span style={{ display: "flex", fontWeight: 700, fontSize: 32, color: "#e6e8ee" }}>
-            Hunch
+            Auspex
           </span>
           <span
             style={{

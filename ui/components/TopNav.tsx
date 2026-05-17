@@ -35,7 +35,7 @@ export function TopNav({ active = "screener" }: Props) {
             className="h-7 w-7 shrink-0 select-none"
             draggable={false}
           />
-          <span className="text-foreground">Hunch</span>
+          <span className="text-foreground">Auspex</span>
           <span className="ml-1 hidden rounded-full bg-zinc-800/80 px-1.5 py-px text-[10px] font-medium uppercase tracking-wider text-muted ring-1 ring-border sm:inline-block">
             beta
           </span>

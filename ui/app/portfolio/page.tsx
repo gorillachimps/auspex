@@ -8,7 +8,7 @@ import { TotalBalance } from "@/components/TotalBalance";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Portfolio · Hunch",
+  title: "Portfolio · Auspex",
   description:
     "Your current Polymarket positions — YES/NO shares, mark value, unrealised P&L.",
 };

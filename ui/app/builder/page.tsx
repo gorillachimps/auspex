@@ -7,9 +7,9 @@ import { BUILDER_CODE } from "@/lib/polymarket";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Builder · Hunch",
+  title: "Builder · Auspex",
   description:
-    "Live attribution data for the Hunch builder code on Polymarket V2.",
+    "Live attribution data for the Auspex builder code on Polymarket V2.",
 };
 
 export default function BuilderPage() {
@@ -22,7 +22,7 @@ export default function BuilderPage() {
             Builder attribution
           </h1>
           <p className="mt-2 max-w-3xl text-sm text-muted">
-            Operator dashboard for the Hunch builder code on Polymarket V2.
+            Operator dashboard for the Auspex builder code on Polymarket V2.
             This page reads the raw{" "}
             <code className="font-mono text-[11px]">/builder/trades</code>{" "}
             endpoint and shows attributed fills as they land — refreshed every

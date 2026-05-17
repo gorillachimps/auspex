@@ -6,7 +6,7 @@ import { ActivityView } from "@/components/ActivityView";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Activity · Hunch",
+  title: "Activity · Auspex",
   description: "Your fill history across all markets, refreshed every minute.",
 };
 
