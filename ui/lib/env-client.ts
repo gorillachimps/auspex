@@ -7,11 +7,14 @@ export const SITE_URL =
 export const POLYGON_RPC_URL =
   process.env.NEXT_PUBLIC_POLYGON_RPC_URL ?? "https://polygon-rpc.com";
 
-// Across attribution. Optional — the SDK works without it; setting this just
-// credits Auspex for routed volume on across.to's integrator dashboard. Get a
-// bytes32 from https://across.to and set NEXT_PUBLIC_ACROSS_INTEGRATOR_ID.
+// Across credentials. Both optional — the SDK works without them; setting
+// them credits Auspex for routed volume on across.to's integrator dashboard
+// and authenticates against rate-limited endpoints. The API key is a Bearer
+// token used client-side by the SDK, so it must be NEXT_PUBLIC_*. Issued by
+// Across's integrator team after registering at docs.across.to/tools/integrator-id.
 export const ACROSS_INTEGRATOR_ID =
   process.env.NEXT_PUBLIC_ACROSS_INTEGRATOR_ID ?? "";
+export const ACROSS_API_KEY = process.env.NEXT_PUBLIC_ACROSS_API_KEY ?? "";
 
 // Optional: drop a Plausible script tag in <head> when this is set. Default
 // host is plausible.io's; override for self-hosted instances. No-op otherwise.

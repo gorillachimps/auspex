@@ -15,7 +15,11 @@ import {
 import { arbitrum, base, mainnet, optimism, polygon } from "viem/chains";
 import type { Address, Hex } from "viem";
 import type { ConfiguredWalletClient } from "@across-protocol/app-sdk";
-import { ACROSS_INTEGRATOR_ID, POLYGON_RPC_URL } from "./env-client";
+import {
+  ACROSS_API_KEY,
+  ACROSS_INTEGRATOR_ID,
+  POLYGON_RPC_URL,
+} from "./env-client";
 
 // Native USDC on each source chain. Across normalises across native/bridged
 // variants on its side; passing the canonical native USDC is the safest input.
@@ -59,6 +63,7 @@ function getClient(): AcrossClient {
     integratorId: ACROSS_INTEGRATOR_ID
       ? (ACROSS_INTEGRATOR_ID as Hex)
       : undefined,
+    apiKey: ACROSS_API_KEY || undefined,
     chains: [mainnet, optimism, arbitrum, base, polygon],
     rpcUrls: { [polygon.id]: POLYGON_RPC_URL },
     logLevel: "ERROR",
