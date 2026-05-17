@@ -50,10 +50,19 @@ export function useWalletTrades(
           const url = `${HOST}/trades?user=${proxy}&limit=${PAGE_LIMIT}&offset=${offset}`;
           const r = await fetch(url, { cache: "no-store" });
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          const data = (await r.json()) as Trade[];
+          const data: unknown = await r.json();
           if (cancelled) return;
-          if (!Array.isArray(data) || data.length === 0) break;
-          accumulator.push(...data);
+          // Validate shape before subscripting. Distinguishes "wallet has
+          // no trades" (empty array) from "API returned something
+          // unexpected" (anything else) — the latter must surface as an
+          // error, not silently become an empty list.
+          if (!Array.isArray(data)) {
+            throw new Error(
+              "Unexpected response shape from /trades (expected array)",
+            );
+          }
+          if (data.length === 0) break;
+          accumulator.push(...(data as Trade[]));
           if (data.length < PAGE_LIMIT) break;
         }
         if (cancelled) return;

@@ -100,6 +100,12 @@ export function computeWalletPnl(
         buyLots.push({ size: trade.size, price: trade.price });
         continue;
       }
+      // Only BUY and SELL participate in realized P&L. Anything else
+      // (e.g. REDEEM or MERGE event types from adjacent endpoints, or
+      // unexpected new side values) is skipped — silently treating an
+      // unknown side as a SELL was the Apr 6 lesson: subscript-then-assume
+      // is exactly how unvalidated API responses leak into math.
+      if (trade.side !== "SELL") continue;
 
       // SELL — match against FIFO buy queue.
       let remaining = trade.size;
