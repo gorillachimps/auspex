@@ -595,6 +595,10 @@ export function OrderTicket({
               )}
             </div>
 
+            {side === "buy" ? (
+              <QuickSizeRow onPick={(usd) => setSizeStr(String(usd))} />
+            ) : null}
+
             <PriceQuickRow
               tick={tickNumeric}
               bid={bestBid}
@@ -612,7 +616,7 @@ export function OrderTicket({
                     value={limitShares > 0 ? limitShares.toFixed(2) : "—"}
                   />
                   <Field
-                    label="pUSD balance"
+                    label="USDC balance"
                     value={fmtCollateral(allowance.balance)}
                   />
                 </>
@@ -657,6 +661,9 @@ export function OrderTicket({
                   maxShares={maxShares}
                 />
               )}
+              {side === "buy" ? (
+                <QuickSizeRow onPick={(usd) => setSizeStr(String(usd))} />
+              ) : null}
             </div>
 
             <FillEstimateCard
@@ -1063,6 +1070,31 @@ function PriceQuickRow({
       <Pill label="Bid" value={bid} />
       <Pill label="Mid" value={mid} />
       <Pill label="Ask" value={ask} />
+    </div>
+  );
+}
+
+/** Preset USD amounts users can click to fill the size input instead of
+ *  typing. Same visual treatment as PriceQuickRow above so the two rows
+ *  look like sibling affordances under their inputs. */
+function QuickSizeRow({ onPick }: { onPick: (usd: number) => void }) {
+  const presets: number[] = [10, 50, 100, 500];
+  return (
+    <div className="mt-2 flex items-center gap-1.5">
+      <span className="text-[10px] uppercase tracking-wider text-muted-2">
+        Quick
+      </span>
+      {presets.map((usd) => (
+        <button
+          key={usd}
+          type="button"
+          onClick={() => onPick(usd)}
+          className="inline-flex items-center rounded-md border border-border-strong bg-surface px-2 py-0.5 text-[11px] font-medium text-muted hover:bg-surface-2 hover:text-foreground"
+          title={`Set size to $${usd}`}
+        >
+          ${usd}
+        </button>
+      ))}
     </div>
   );
 }
