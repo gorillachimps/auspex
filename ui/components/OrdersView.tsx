@@ -5,6 +5,7 @@ import { Loader2, X, AlertCircle, RefreshCw, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import type { ClobClient, OpenOrder } from "@polymarket/clob-client-v2";
 import { useClobSession } from "@/lib/useClobSession";
+import { useEnsureClientOnMount } from "@/lib/useEnsureClientOnMount";
 import { useMarketLookup } from "@/lib/useMarketLookup";
 import { cn } from "@/lib/cn";
 
@@ -30,6 +31,9 @@ function fmtAge(unix: number) {
 
 export function OrdersView() {
   const session = useClobSession();
+  // Navigating to /orders implies the user wants to see their orders.
+  // Auto-derive CLOB credentials so the prompt has obvious context.
+  useEnsureClientOnMount();
   const [orders, setOrders] = useState<OpenOrder[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

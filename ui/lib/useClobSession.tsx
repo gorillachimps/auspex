@@ -39,6 +39,7 @@ export type ClobSessionStatus =
   | "unconnected" // No wallet connected
   | "linking" // Wallet connected, auto-detecting Polymarket account
   | "no-funder" // Connected, auto-detect failed or returned no proxy
+  | "linked" // Wallet + funder known, CLOB credentials NOT yet derived
   | "deriving" // Authenticating with Polymarket (signing L1 message)
   | "ready" // Fully authenticated; client available
   | "error";
@@ -60,6 +61,12 @@ export type ClobSession = {
   /** Refresh the wallet/funder/creds detection. Call after the user updates
    *  their deposit wallet via DepositWalletDialog. */
   refresh: () => void;
+  /** Derive CLOB credentials on demand. Call this just-in-time from
+   *  components that actually need to sign / read authenticated endpoints
+   *  (order placement, allowance update, /portfolio balance). Returns the
+   *  client once creds are derived. Idempotent — subsequent calls return the
+   *  cached client without prompting again. */
+  ensureClient: () => Promise<ClobClient>;
 };
 
 const DISABLED: ClobSession = {
@@ -69,6 +76,8 @@ const DISABLED: ClobSession = {
   client: null,
   error: null,
   refresh: () => {},
+  ensureClient: () =>
+    Promise.reject(new Error("Privy not configured — trading disabled")),
 };
 
 const ClobSessionContext = createContext<ClobSession>(DISABLED);
@@ -240,9 +249,9 @@ function useClobSessionState(): ClobSession {
     };
   }, [wallet, eoa]);
 
-  // Derive (or reuse) creds, then build the configured client.
+  // Compute status declaratively from the upstream state. No longer triggers
+  // CLOB credential derivation on its own — that's lazy, behind `ensureClient`.
   useEffect(() => {
-    let cancelled = false;
     if (!ready) {
       setStatus("loading");
       return;
@@ -261,33 +270,70 @@ function useClobSessionState(): ClobSession {
       setClient(null);
       return;
     }
-    setStatus("deriving");
+    // Wallet + funder ready. If we've already derived a client (e.g. from a
+    // previous explicit ensureClient call within this session), surface that
+    // via "ready". Otherwise sit at "linked" and wait for a consumer to
+    // explicitly request derivation. This is the change that eliminates the
+    // second wallet-signature prompt right after Privy connect.
     setError(null);
-    (async () => {
-      try {
-        const creds = await ensureCreds(walletClient, eoa, funder);
-        if (cancelled) return;
-        const c = buildClobClient({
-          walletClient,
-          funderAddress: funder,
-          creds,
-        });
-        if (!cancelled) {
+    setStatus((prev) => {
+      if (client) return "ready";
+      // Preserve "deriving" if a derivation is currently in flight (the
+      // ensureClient method sets it; we don't clobber it back to "linked").
+      if (prev === "deriving") return prev;
+      return "linked";
+    });
+  }, [ready, authenticated, eoa, walletClient, funder, refreshTick, linkingForEoa, client]);
+
+  // Promise-based ensureClient. Returns the cached client when one is already
+  // available, otherwise runs the derivation + build sequence and caches the
+  // result. Idempotent across concurrent calls thanks to deriveInFlight.
+  const deriveInFlight = useRef<Promise<ClobClient> | null>(null);
+  const ensureClient = useMemo(
+    () => async (): Promise<ClobClient> => {
+      if (client) return client;
+      if (deriveInFlight.current) return deriveInFlight.current;
+      if (!walletClient || !eoa || !funder) {
+        throw new Error(
+          "Cannot authenticate — connect a wallet and link your Polymarket account first.",
+        );
+      }
+      setStatus("deriving");
+      setError(null);
+      const promise = (async () => {
+        try {
+          const creds = await ensureCreds(walletClient, eoa, funder);
+          const c = buildClobClient({
+            walletClient,
+            funderAddress: funder,
+            creds,
+          });
           setClient(c);
           setStatus("ready");
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setError((e as Error).message ?? "auth failed");
+          return c;
+        } catch (e) {
+          const msg = (e as Error).message ?? "auth failed";
+          setError(msg);
           setStatus("error");
           setClient(null);
+          throw e;
+        } finally {
+          deriveInFlight.current = null;
         }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [ready, authenticated, eoa, walletClient, funder, refreshTick, linkingForEoa]);
+      })();
+      deriveInFlight.current = promise;
+      return promise;
+    },
+    [walletClient, eoa, funder, client],
+  );
+
+  // Reset the cached client whenever the connecting wallet changes, the
+  // funder changes, or refresh is called. This forces a fresh derive on the
+  // next ensureClient call — matters when the user switches wallets mid-session.
+  useEffect(() => {
+    setClient(null);
+    deriveInFlight.current = null;
+  }, [walletClient, funder, refreshTick]);
 
   return useMemo(
     () => ({
@@ -297,8 +343,9 @@ function useClobSessionState(): ClobSession {
       client,
       error,
       refresh,
+      ensureClient,
     }),
-    [status, eoa, funder, client, error, refresh],
+    [status, eoa, funder, client, error, refresh, ensureClient],
   );
 }
 

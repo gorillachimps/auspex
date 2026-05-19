@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Loader2, Wallet } from "lucide-react";
 import { useClobSession } from "@/lib/useClobSession";
 import { useBalanceAllowance } from "@/lib/useBalanceAllowance";
+import { useEnsureClientOnMount } from "@/lib/useEnsureClientOnMount";
 import { useUserPositions } from "@/lib/useUserPositions";
 import { cn } from "@/lib/cn";
 
@@ -24,6 +25,11 @@ import { cn } from "@/lib/cn";
  */
 export function TotalBalance() {
   const session = useClobSession();
+  // Navigating to /portfolio is intentful — the user wants to see their
+  // balances. Auto-derive CLOB credentials on mount so the Liquid pUSD
+  // tile populates without requiring a separate "Sign in to load balance"
+  // click. Safe even when status isn't "linked"; the hook no-ops then.
+  useEnsureClientOnMount();
   const allowance = useBalanceAllowance(session.client);
   const positions = useUserPositions(session.funderAddress);
 
@@ -50,7 +56,10 @@ export function TotalBalance() {
     return { liquid, inPositions, cashPnl, total, pctPnl, count: ps.length };
   }, [allowance.balance, positions.positions]);
 
-  if (session.status !== "ready") return null;
+  // Render in both "linked" (creds derivation in flight / about to fire on
+  // mount-effect) AND "ready". The skeleton state on the tiles handles the
+  // brief gap where allowance is still null.
+  if (session.status !== "ready" && session.status !== "linked") return null;
 
   // Both sources still loading + no data yet — show a thin skeleton so the
   // page doesn't shift when the numbers fill in.

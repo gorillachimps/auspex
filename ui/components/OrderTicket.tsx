@@ -151,6 +151,36 @@ export function OrderTicket({
 
   useFocusTrap(open, dialogRef, 'input[inputmode="decimal"]');
 
+  // Opening the order ticket is the strongest "intent to trade" signal we
+  // have — that's where we fire the (now lazy) CLOB credential derivation.
+  // No second wallet-signature prompt right after Privy connect; the prompt
+  // appears here, with clear context for the user.
+  //
+  // Fires AT MOST ONCE per open transition (tracked via `firedForOpen` ref).
+  // That's important because:
+  //   - It would otherwise re-fire on every render where session changes,
+  //     including the very status flip ("linked" → "deriving") triggered by
+  //     the previous call.
+  //   - If ensureClient errors (user rejects signature), status becomes
+  //     "error". Without the once-per-open guard, the next render would
+  //     immediately re-fire the prompt, trapping the user in a loop.
+  // To retry after rejection the user closes the dialog and re-opens it —
+  // a clear, learnable interaction.
+  const firedForOpen = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      firedForOpen.current = false;
+      return;
+    }
+    if (firedForOpen.current) return;
+    if (session.status !== "linked" && session.status !== "error") return;
+    firedForOpen.current = true;
+    session.ensureClient().catch(() => {
+      // Errors are surfaced via session.error → sessionBlocker below;
+      // no need to handle here.
+    });
+  }, [open, session]);
+
   const tokenId =
     outcome === "yes" ? market?.tokenYes ?? null : market?.tokenNo ?? null;
 
@@ -422,10 +452,14 @@ export function OrderTicket({
         return "Authenticating…";
       case "unconnected":
         return "Connect a wallet first (top-right).";
+      case "linking":
+        return "Finding your Polymarket account…";
       case "no-funder":
         return "Set your trading account first (Connect menu → Connect your trading account).";
+      case "linked":
+        return "Authorising your session…";
       case "deriving":
-        return "Setting up your session…";
+        return "Authorising — please sign the wallet prompt.";
       case "error":
         return session.error ?? "Auth error";
       case "ready":
