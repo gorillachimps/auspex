@@ -103,13 +103,20 @@ function ConnectButtonInner() {
   }
 
   const needsFunder = !funder;
+  const isLinking = session.status === "linking";
   const isDeriving = session.status === "deriving";
   const sessionErrored = session.status === "error";
 
   let leftBadge: React.ReactNode;
   let borderClass: string;
   let textClass: string;
-  if (isDeriving) {
+  if (isLinking) {
+    leftBadge = (
+      <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" aria-hidden="true" />
+    );
+    borderClass = "border-accent/40";
+    textClass = "text-accent";
+  } else if (isDeriving) {
     leftBadge = (
       <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" aria-hidden="true" />
     );
@@ -146,13 +153,15 @@ function ConnectButtonInner() {
           onClick={() => setMenuOpen((v) => !v)}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
-          aria-busy={isDeriving}
+          aria-busy={isDeriving || isLinking}
           title={
-            isDeriving
-              ? "Authenticating with Polymarket… please sign the prompt in your wallet"
-              : sessionErrored
-                ? `Auth error: ${session.error ?? "unknown"}`
-                : undefined
+            isLinking
+              ? "Finding your Polymarket account on-chain…"
+              : isDeriving
+                ? "Authenticating with Polymarket… please sign the prompt in your wallet"
+                : sessionErrored
+                  ? `Auth error: ${session.error ?? "unknown"}`
+                  : undefined
           }
           className={cn(
             "inline-flex items-center gap-2 rounded-md border bg-surface px-2.5 py-1.5 text-[13px] font-medium hover:bg-surface-2",
@@ -162,7 +171,11 @@ function ConnectButtonInner() {
         >
           {leftBadge}
           <span className="font-mono text-[12px]">
-            {isDeriving ? "Authorising…" : shortAddress(eoa)}
+            {isLinking
+              ? "Linking…"
+              : isDeriving
+                ? "Authorising…"
+                : shortAddress(eoa)}
           </span>
           <ChevronDown className="h-3 w-3 text-muted-2" aria-hidden="true" />
         </button>

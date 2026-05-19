@@ -5,29 +5,51 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { createWalletClient, custom, type WalletClient } from "viem";
+import {
+  createPublicClient,
+  createWalletClient,
+  custom,
+  http,
+  type WalletClient,
+} from "viem";
 import { polygon } from "viem/chains";
 import type { ClobClient } from "@polymarket/clob-client-v2";
+import { toast } from "sonner";
 import {
   buildClobClient,
   ensureCreds,
   readFunderAddress,
+  writeFunderAddress,
   FUNDER_CHANGED_EVENT,
 } from "./polymarket";
-import { isPrivyConfigured } from "./env-client";
+import { isPrivyConfigured, POLYGON_RPC_URL } from "./env-client";
+import {
+  findPolymarketProxy,
+  findProxyOwners,
+} from "./findPolymarketProxy";
 
 export type ClobSessionStatus =
   | "disabled" // Privy not configured
   | "loading" // Privy initialising
   | "unconnected" // No wallet connected
-  | "no-funder" // Connected, deposit wallet not set
+  | "linking" // Wallet connected, auto-detecting Polymarket account
+  | "no-funder" // Connected, auto-detect failed or returned no proxy
   | "deriving" // Authenticating with Polymarket (signing L1 message)
   | "ready" // Fully authenticated; client available
   | "error";
+
+// Module-scoped read-only client for the bytecode check during auto-link.
+// We don't use the wagmi-bound publicClient here because useClobSession runs
+// upstream of the wagmi provider in some render orders during hydration.
+const polygonReadClient = createPublicClient({
+  chain: polygon,
+  transport: http(POLYGON_RPC_URL),
+});
 
 export type ClobSession = {
   status: ClobSessionStatus;
@@ -67,6 +89,12 @@ function useClobSessionState(): ClobSession {
   const [status, setStatus] = useState<ClobSessionStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  /** "linking" while the EOA's Polymarket proxy is being auto-detected, before
+   *  we either find one (→ funder is set silently) or give up (→ status moves
+   *  to "no-funder" and the DepositWalletDialog manual-entry path is offered). */
+  const [linkingForEoa, setLinkingForEoa] = useState<string | null>(null);
+  /** Per-EOA flag so we don't re-attempt auto-detect after a single failure. */
+  const autoLinkAttempted = useRef<Set<string>>(new Set());
 
   const refresh = useMemo(
     () => () => {
@@ -83,6 +111,76 @@ function useClobSessionState(): ClobSession {
     }
     setFunder(readFunderAddress(eoa));
   }, [eoa, refreshTick]);
+
+  // Auto-link: when a wallet connects and has no cached funder, try to find
+  // their Polymarket proxy on-chain via /api/find-proxy. If the result passes
+  // validation (the proxy is a contract AND the connected EOA is in its
+  // owners list), save it silently — no dialog, no extra click. This is the
+  // happy path for users who already have a Polymarket account.
+  //
+  // Falls through to the dialog-based manual entry when:
+  //   - find-proxy returns no result (user has no Polymarket account yet)
+  //   - find-proxy succeeds but bytecode check fails (proxy address doesn't
+  //     exist on-chain — shouldn't happen but defensive)
+  //   - reverse-owner check fails (proxy isn't owned by this EOA — also a
+  //     defensive guard, since find-proxy already filters by owner)
+  //   - any RPC / network failure → fail open, user gets the dialog
+  useEffect(() => {
+    if (!eoa || !walletClient) return;
+    if (funder) return; // cached funder; nothing to auto-detect
+    if (autoLinkAttempted.current.has(eoa)) return; // already tried this session
+    autoLinkAttempted.current.add(eoa);
+
+    let cancelled = false;
+    setLinkingForEoa(eoa);
+
+    (async () => {
+      try {
+        const lookup = await findPolymarketProxy(eoa);
+        if (cancelled) return;
+        if (!lookup.proxy) return; // no Polymarket account → fall to no-funder
+
+        // Step 1: bytecode check.
+        let hasBytecode = false;
+        try {
+          const code = await polygonReadClient.getCode({
+            address: lookup.proxy,
+          });
+          hasBytecode = !!code && code !== "0x";
+        } catch {
+          // RPC error: don't auto-save, fall through to dialog so the user
+          // can review what we found.
+          return;
+        }
+        if (cancelled) return;
+        if (!hasBytecode) return;
+
+        // Step 2: reverse-owner check (when API key is configured).
+        const owners = await findProxyOwners(lookup.proxy);
+        if (cancelled) return;
+        if (owners.available && owners.owners.length > 0) {
+          const isOwner = owners.owners.some(
+            (o) => o.toLowerCase() === eoa.toLowerCase(),
+          );
+          if (!isOwner) return; // proxy belongs to a different wallet
+        }
+
+        // All checks passed. Save silently and surface a toast.
+        writeFunderAddress(eoa, lookup.proxy);
+        toast.success(
+          `Linked your Polymarket account ${lookup.proxy.slice(0, 6)}…${lookup.proxy.slice(-4)}`,
+        );
+      } catch {
+        // any error → silent fail; user gets the manual dialog
+      } finally {
+        if (!cancelled) setLinkingForEoa((curr) => (curr === eoa ? null : curr));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [eoa, walletClient, funder]);
 
   // Pick up funder writes from any component or other tab without waiting for
   // a page reload. Both same-tab (CustomEvent) and cross-tab (StorageEvent).
@@ -155,7 +253,11 @@ function useClobSessionState(): ClobSession {
       return;
     }
     if (!funder) {
-      setStatus("no-funder");
+      // Distinguish "auto-detect in flight" from "auto-detect failed — show
+      // the manual dialog." The connect button reads `linking` to show a
+      // friendly "Linking your account…" pill instead of the ⚠️ no-funder
+      // warning during the brief window where we're still looking.
+      setStatus(linkingForEoa === eoa ? "linking" : "no-funder");
       setClient(null);
       return;
     }
@@ -185,7 +287,7 @@ function useClobSessionState(): ClobSession {
     return () => {
       cancelled = true;
     };
-  }, [ready, authenticated, eoa, walletClient, funder, refreshTick]);
+  }, [ready, authenticated, eoa, walletClient, funder, refreshTick, linkingForEoa]);
 
   return useMemo(
     () => ({
