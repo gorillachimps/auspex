@@ -23,6 +23,7 @@ import {
   fmtSignedPP,
   fmtSourceLabel,
   fmtUSD,
+  urgencyForEnd,
 } from "@/lib/format";
 import { familyMeta, FAMILY_TONE_CLASSES } from "@/lib/families";
 import { summarizeRules } from "@/lib/rules";
@@ -109,6 +110,15 @@ export default async function MarketDetailPage({ params }: Props) {
             <BigStat
               label="Closes in"
               value={fmtDaysLeft(row.endDate)}
+              valueTone={
+                urgencyForEnd(row.endDate) === "urgent"
+                  ? "text-rose-300"
+                  : urgencyForEnd(row.endDate) === "soon"
+                    ? "text-amber-300"
+                    : urgencyForEnd(row.endDate) === "ended"
+                      ? "text-muted-2"
+                      : undefined
+              }
               hint={
                 row.endDate ? new Date(row.endDate).toUTCString() : undefined
               }
@@ -220,17 +230,23 @@ function BigStat({
   label,
   value,
   hint,
+  valueTone,
 }: {
   label: string;
   value: string;
   hint?: string;
+  /** Optional Tailwind classes applied to the headline value — used by the
+   *  "Closes in" stat to surface urgency (red <24h, amber <7d). */
+  valueTone?: string;
 }) {
   return (
     <div className="rounded-md border border-border bg-surface/40 px-3 py-2">
       <div className="text-[10px] uppercase tracking-wider text-muted-2">
         {label}
       </div>
-      <div className="tabular text-lg font-semibold">{value}</div>
+      <div className={cn("tabular text-lg font-semibold", valueTone)}>
+        {value}
+      </div>
       {hint ? (
         <div className="tabular text-[11px] text-muted">{hint}</div>
       ) : null}

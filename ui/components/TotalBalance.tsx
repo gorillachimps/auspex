@@ -61,10 +61,15 @@ export function TotalBalance() {
   // brief gap where allowance is still null.
   if (session.status !== "ready" && session.status !== "linked") return null;
 
-  // Both sources still loading + no data yet — show a thin skeleton so the
-  // page doesn't shift when the numbers fill in.
-  const loadingFirstPass =
-    allowance.balance == null && positions.positions == null;
+  // Track liquid and position data independently so each tile can show its
+  // own skeleton while the other has resolved. Previously a single
+  // "loadingFirstPass" flag flipped to false as soon as either source
+  // returned, which made the liquid tile flash "$0.00" in the brief window
+  // between positions arriving (no creds needed) and ensureClient completing
+  // (creds derived). Now each tile is independently aware of its load state.
+  const liquidLoading = allowance.balance == null;
+  const positionsLoading = positions.positions == null;
+  const allLoading = liquidLoading && positionsLoading;
 
   const pnlSign =
     stats.cashPnl > 0.005 ? 1 : stats.cashPnl < -0.005 ? -1 : 0;
@@ -74,20 +79,20 @@ export function TotalBalance() {
       <h2 className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-muted-2">
         <Wallet className="h-3 w-3" aria-hidden="true" />
         Total balance
-        {(allowance.loading || positions.loading) && !loadingFirstPass ? (
+        {(allowance.loading || positions.loading) && !allLoading ? (
           <Loader2 className="h-3 w-3 animate-spin opacity-60" aria-hidden="true" />
         ) : null}
       </h2>
 
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="tabular text-3xl font-semibold tracking-tight text-foreground">
-          {loadingFirstPass ? (
+          {liquidLoading || positionsLoading ? (
             <span className="inline-block h-8 w-32 animate-pulse rounded bg-surface-2" />
           ) : (
             fmtUSD(stats.total)
           )}
         </span>
-        {!loadingFirstPass && Math.abs(stats.cashPnl) >= 0.005 ? (
+        {!positionsLoading && Math.abs(stats.cashPnl) >= 0.005 ? (
           <span
             className={cn(
               "tabular text-[13px] font-medium",
@@ -114,26 +119,30 @@ export function TotalBalance() {
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
         <Tile
           label="Available to trade"
-          value={loadingFirstPass ? "—" : fmtUSD(stats.liquid)}
+          value={liquidLoading ? null : fmtUSD(stats.liquid)}
           hint="USDC you can spend on new orders"
         />
         <Tile
           label="In positions"
-          value={loadingFirstPass ? "—" : fmtUSD(stats.inPositions)}
+          value={positionsLoading ? null : fmtUSD(stats.inPositions)}
           hint={
-            stats.count > 0
-              ? `${stats.count} open outcome${stats.count === 1 ? "" : "s"}`
-              : "No open positions"
+            positionsLoading
+              ? undefined
+              : stats.count > 0
+                ? `${stats.count} open outcome${stats.count === 1 ? "" : "s"}`
+                : "No open positions"
           }
         />
         <Tile
           label="Unrealized P&L"
-          value={loadingFirstPass ? "—" : fmtSignedUSD(stats.cashPnl)}
+          value={positionsLoading ? null : fmtSignedUSD(stats.cashPnl)}
           tone={pnlSign > 0 ? "emerald" : pnlSign < 0 ? "rose" : "neutral"}
           hint={
-            Math.abs(stats.pctPnl) >= 0.05
-              ? `${fmtSignedPct(stats.pctPnl)} on entry cost`
-              : "—"
+            positionsLoading
+              ? undefined
+              : Math.abs(stats.pctPnl) >= 0.05
+                ? `${fmtSignedPct(stats.pctPnl)} on entry cost`
+                : "—"
           }
         />
       </div>
@@ -148,7 +157,10 @@ function Tile({
   tone = "neutral",
 }: {
   label: string;
-  value: string;
+  /** `null` means "still loading" — renders a skeleton bar in place of the
+   *  number. The component handles loading per-tile so independent data
+   *  sources don't make the whole widget flash placeholder values. */
+  value: string | null;
   hint?: string;
   tone?: "neutral" | "emerald" | "rose";
 }) {
@@ -163,9 +175,13 @@ function Tile({
       <div className="text-[10px] uppercase tracking-wider text-muted-2">
         {label}
       </div>
-      <div className={cn("tabular text-base font-semibold", colour)}>
-        {value}
-      </div>
+      {value == null ? (
+        <div className="my-0.5 h-5 w-20 animate-pulse rounded bg-surface-2" />
+      ) : (
+        <div className={cn("tabular text-base font-semibold", colour)}>
+          {value}
+        </div>
+      )}
       {hint ? (
         <div className="tabular text-[10px] text-muted-2">{hint}</div>
       ) : null}

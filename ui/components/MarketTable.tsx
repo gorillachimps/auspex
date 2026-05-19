@@ -9,7 +9,7 @@ import {
   type Row,
   type SortingState,
 } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ChevronsUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ChevronsUpDown, Sparkle } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { familyMeta, FAMILY_TONE_CLASSES } from "@/lib/families";
@@ -19,6 +19,7 @@ import {
   fmtSignedPP,
   fmtSourceLabel,
   fmtUSD,
+  urgencyForEnd,
 } from "@/lib/format";
 import type { TableRow } from "@/lib/types";
 import { DeltaBar } from "./DeltaBar";
@@ -116,16 +117,31 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
           const r = row.original;
           const meta = familyMeta(r.family);
           const tone = FAMILY_TONE_CLASSES[meta.tone];
+          const sharp = isSharpSignal(r);
           return (
             <div className="flex min-w-0 flex-col gap-0.5 py-1">
-              <a
-                href={`/markets/${r.slug}`}
-                onClick={(ev) => ev.stopPropagation()}
-                className="truncate text-[13px] font-medium leading-snug text-foreground hover:text-accent hover:underline decoration-dotted underline-offset-2"
-                title={r.question}
-              >
-                {r.question}
-              </a>
+              <div className="flex min-w-0 items-center gap-1.5">
+                {sharp ? (
+                  <Sparkle
+                    className="h-3 w-3 shrink-0 text-accent"
+                    aria-hidden="true"
+                    role="img"
+                  >
+                    <title>
+                      Sharp signal — high clarity score with the market
+                      still pricing it as uncertain. Worth a closer look.
+                    </title>
+                  </Sparkle>
+                ) : null}
+                <a
+                  href={`/markets/${r.slug}`}
+                  onClick={(ev) => ev.stopPropagation()}
+                  className="truncate text-[13px] font-medium leading-snug text-foreground hover:text-accent hover:underline decoration-dotted underline-offset-2"
+                  title={r.question}
+                >
+                  {r.question}
+                </a>
+              </div>
               <span
                 className={cn(
                   "inline-flex w-fit items-center rounded-full px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide ring-1",
@@ -232,14 +248,26 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
         header: () => (
           <Tooltip
             label="Closes in"
-            hint="Days until trading ends for this market. Click to sort by closing date — ending soonest first."
+            hint="Time until trading ends. Red = under 24h, amber = under a week. Click to sort by closing date — ending soonest first."
           />
         ),
-        cell: ({ getValue }) => (
-          <span className="tabular text-[12px] text-muted">
-            {fmtDaysLeft(getValue() as string | null)}
-          </span>
-        ),
+        cell: ({ getValue }) => {
+          const end = getValue() as string | null;
+          const tier = urgencyForEnd(end);
+          const cls =
+            tier === "urgent"
+              ? "text-rose-300 font-medium"
+              : tier === "soon"
+                ? "text-amber-300"
+                : tier === "ended"
+                  ? "text-muted-2 italic"
+                  : "text-muted";
+          return (
+            <span className={cn("tabular text-[12px]", cls)}>
+              {fmtDaysLeft(end)}
+            </span>
+          );
+        },
         sortingFn: (a, b) => {
           const at = Date.parse(a.original.endDate ?? "") || Number.POSITIVE_INFINITY;
           const bt = Date.parse(b.original.endDate ?? "") || Number.POSITIVE_INFINITY;
@@ -277,6 +305,31 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
           return Math.abs(av) - Math.abs(bv);
         },
         size: 64,
+      }),
+      columnHelper.accessor("liquidity", {
+        id: "depth",
+        header: () => (
+          <Tooltip
+            label="Depth"
+            hint="How much you could realistically trade near the current price before slippage. Higher = more room to size up. Sourced from Polymarket's order-book liquidity figure."
+            align="end"
+          />
+        ),
+        cell: ({ getValue }) => {
+          const v = getValue() as number | null;
+          if (v == null) return <span className="text-[12px] text-muted-2">—</span>;
+          // Soft urgency tint — thin books get muted, deep ones get the accent.
+          // Lets the eye scan for "tradable" rows without anyone explaining it.
+          const tier =
+            v >= 10_000 ? "text-accent" : v >= 1_000 ? "text-foreground" : "text-muted-2";
+          return (
+            <span className={cn("tabular text-[12px] tabular-nums", tier)}>
+              {fmtCompactUSD(v)}
+            </span>
+          );
+        },
+        sortingFn: numericNullsLast,
+        size: 72,
       }),
       columnHelper.accessor("volume24h", {
         id: "volume24h",
@@ -481,6 +534,30 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
       </div>
     </>
   );
+}
+
+/**
+ * "Sharp signal" sigil criteria — flags the small subset of rows where it's
+ * worth paying attention. Intentionally narrow so the badge stays meaningful:
+ *
+ *   - Clarity score is high (RC ≥ 70) — we're confident in the read
+ *   - Distance is material (|distance| ≥ 5%) — the live data still has room
+ *     to move, so the trigger isn't a foregone conclusion baked into the book
+ *   - Implied probability sits in the uncertain band (20–80%) — if the
+ *     market is already ≥80% confident, the screener's confidence isn't
+ *     adding new information
+ *   - Not already triggered — once the line is crossed there's no edge
+ *
+ * Tuned to fire on roughly the top 5% of live-state rows. Adjust the
+ * thresholds if it starts feeling either too rare or too noisy.
+ */
+function isSharpSignal(r: TableRow): boolean {
+  if (r.rc == null || r.rc < 70) return false;
+  if (r.distancePct == null || Math.abs(r.distancePct) < 0.05) return false;
+  if (r.alreadyTriggered) return false;
+  if (r.impliedYes == null) return false;
+  if (r.impliedYes < 0.2 || r.impliedYes > 0.8) return false;
+  return true;
 }
 
 function numericNullsLast(a: Row<TableRow>, b: Row<TableRow>, columnId: string) {

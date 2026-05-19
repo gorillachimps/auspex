@@ -62,6 +62,29 @@ export function fmtDaysLeft(end: string | null) {
   return `${days}d`;
 }
 
+/** Urgency tier for a market's close date. Drives the color of the
+ *  "Closes in" cell on the screener and the matching stat on /markets/[slug].
+ *
+ *    - `ended`   — already past the close date
+ *    - `urgent`  — less than 24h to close (red)
+ *    - `soon`    — less than 7d to close (amber)
+ *    - `later`   — more than 7d out (normal muted)
+ *    - `unknown` — no end date on the market record
+ */
+export function urgencyForEnd(
+  end: string | null | undefined,
+): "ended" | "urgent" | "soon" | "later" | "unknown" {
+  if (!end) return "unknown";
+  const t = Date.parse(end);
+  if (!isFinite(t)) return "unknown";
+  const ms = t - Date.now();
+  if (ms <= 0) return "ended";
+  const hours = ms / 3_600_000;
+  if (hours < 24) return "urgent";
+  if (hours < 24 * 7) return "soon";
+  return "later";
+}
+
 // Hand-tuned labels for sources where snake_case → Title Case isn't enough
 // (FDV is an acronym, "t plus 24h" reads cleaner as "@ T+24h", etc.). Anything
 // not listed falls through to the snake_case → Title Case helper below, which
