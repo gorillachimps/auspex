@@ -24,7 +24,7 @@ const TABS: Array<{
   { id: "portfolio", label: "Portfolio", href: "/portfolio", hideOn: "mobile" },
   { id: "activity", label: "Activity", href: "/activity", hideOn: "mobile" },
   { id: "wallets", label: "Wallets", href: "/wallets", hideOn: "mobile" },
-  { id: "api", label: "API", href: "/api/markets", hideOn: "small" },
+  { id: "api", label: "API", href: "/api", hideOn: "small" },
   { id: "docs", label: "Docs", href: "/docs", hideOn: "small" },
 ];
 
