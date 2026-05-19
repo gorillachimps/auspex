@@ -42,7 +42,7 @@ export function Footer() {
           0% fees, ever
         </span>
         <span className="ml-auto flex items-center gap-3">
-          <a href="/api/markets" className="hover:text-foreground">
+          <a href="/api" className="hover:text-foreground">
             API
           </a>
         </span>
