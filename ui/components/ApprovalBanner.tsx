@@ -42,10 +42,10 @@ export function ApprovalBanner() {
   async function approve() {
     if (!session.client) return;
     setApproving(true);
-    const toastId = toast.loading("Approving pUSD for trading…");
+    const toastId = toast.loading("Approving USDC for trading…");
     try {
       await updateAllowance(session.client);
-      toast.success("pUSD approved — you can place orders now.", {
+      toast.success("USDC approved — you can place orders now.", {
         id: toastId,
         duration: 5000,
       });
@@ -96,8 +96,8 @@ export function ApprovalBanner() {
           <span className="tabular text-amber-50">
             {fmtCollateral(allowance.balance)}
           </span>
-          . Approve pUSD spend so orders can route through your account. Signed
-          in your wallet — Auspex never moves funds.
+          . Sign once to approve USDC spend so your orders can settle. Auspex
+          never holds your funds — your wallet stays in control.
         </span>
         <button
           type="button"

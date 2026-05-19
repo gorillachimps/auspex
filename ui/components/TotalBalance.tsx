@@ -113,9 +113,9 @@ export function TotalBalance() {
 
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
         <Tile
-          label="Liquid pUSD"
+          label="Available to trade"
           value={loadingFirstPass ? "—" : fmtUSD(stats.liquid)}
-          hint="Available to spend on new orders"
+          hint="USDC you can spend on new orders"
         />
         <Tile
           label="In positions"

@@ -20,175 +20,169 @@ export default function DocsPage() {
             Fair warning: this is informational, not financial advice.
           </p>
 
-          <Section id="signal" title="Resolution-source-as-signal">
+          <Section id="signal" title="What makes Auspex different">
             <p>
-              Most prediction-market screeners stop at price feeds and order-book
-              depth. Auspex looks one layer deeper:{" "}
+              Most prediction-market sites just show you the odds. Auspex
+              also checks the actual data each market settles on:{" "}
               <strong className="text-foreground">
-                we read the live state of each market&apos;s own stated resolution
-                criterion
+                the live Binance price, the on-chain treasury, the launch
+                timestamp — whatever the market&apos;s rules point to
               </strong>{" "}
-              and score it directly.
+              — and shows you how close that data is to triggering YES.
             </p>
             <p className="mt-3">
-              For example, &quot;Will Bitcoin hit $150k by June 30, 2026?&quot;
-              resolves YES if Binance BTC/USDT prints ≥ $150,000 at any point
-              before the deadline. We read the current BTC price from Binance,
-              compute the gap to the threshold, and surface that{" "}
-              <em>distance to trigger</em> alongside the Polymarket implied
-              probability — letting you compare what the book thinks against
-              what the underlying says.
+              Example: &quot;Will Bitcoin hit $150k by June 30, 2026?&quot;
+              resolves YES if Binance BTC/USDT ever closes at or above
+              $150,000 before the deadline. Auspex reads the current BTC
+              price, computes the gap to $150k, and shows that{" "}
+              <em>distance</em> next to the market&apos;s implied odds. Your
+              edge isn&apos;t our forecast — it&apos;s the gap between what
+              the market thinks and what the data says.
             </p>
           </Section>
 
-          <Section id="rc" title="Resolution Confidence (RC)">
+          <Section id="rc" title="Clarity score">
             <p>
-              Composite 0–100 score that blends three signals about how legible a
-              market&apos;s resolution path is. Higher is better.
+              A 0–100 score of how clearly a market will resolve. Higher =
+              cleaner read on YES or NO. We mix three things:
             </p>
-            <pre className="mt-3 overflow-x-auto rounded-md border border-border bg-background/60 px-3 py-2 font-mono text-[12px] text-foreground/90">
-{`rc = 0.55 × distance_score
-   + 0.30 × time_pressure
-   + 0.15 × log_volume_score`}
-            </pre>
-            <ul className="mt-4 space-y-1 text-sm">
+            <ul className="mt-3 space-y-1 text-sm">
               <li>
-                <strong className="text-foreground">distance_score</strong> — 100
-                if the threshold has already been crossed, otherwise{" "}
-                <code>100 · exp(-2.5 · |distance|)</code>. Falls off fast as the
-                gap grows.
+                <strong className="text-foreground">Distance (55%)</strong> —
+                how close the live value is to triggering. A market two
+                percent from the line scores much higher than one that needs
+                a 20% move.
               </li>
               <li>
-                <strong className="text-foreground">time_pressure</strong> —
-                100 if &lt; 1 day to deadline, then 90 / 70 / 50 / 30 as the
-                horizon stretches out.
+                <strong className="text-foreground">Time pressure (30%)</strong>{" "}
+                — how soon the market closes. Less than a day to deadline
+                scores at the top; a year out scores at the bottom.
               </li>
               <li>
-                <strong className="text-foreground">log_volume_score</strong> —
-                bucketed by total Polymarket volume: 10 / 30 / 50 / 70 / 90.
-                Penalises ghost-town markets with no liquidity.
+                <strong className="text-foreground">Volume (15%)</strong> —
+                how active the market is. We penalise ghost-town markets
+                where the odds aren&apos;t backed by real trading.
               </li>
             </ul>
             <p className="mt-3">
-              RC is only computed when{" "}
-              <code className="text-foreground">live.state == &quot;live&quot;</code>{" "}
-              — i.e. the resolution source is one we&apos;ve wired (currently
-              Binance spot prices). Other markets show <code>—</code> in the RC
-              column.
+              Only scored for markets we can auto-check (currently Binance
+              spot-price markets). Subjective markets that resolve via
+              Polymarket&apos;s own judgment show <code>—</code> in the
+              Clarity column.
             </p>
           </Section>
 
-          <Section id="delta" title="Δ to trigger">
+          <Section id="delta" title="Distance">
             <p>
-              Signed percentage from the current state of the underlying to the
-              threshold the market resolves on. Positive means the underlying
-              has to <em>fall</em> to trigger; negative means it has to{" "}
-              <em>rise</em>.
+              How far the live value is from the trigger that flips the market
+              to YES. <span className="text-emerald-300">Positive</span> means
+              already above the line;{" "}
+              <span className="text-rose-300">negative</span> means below.
+              Either way, smaller (in absolute value) = closer to triggering.
             </p>
             <p className="mt-3">
-              The bar visualises this two-tone: green = how close we are
-              (closeness = 100 − |distance|), red = how far is left. A
-              ✓ &quot;triggered&quot; pill replaces the bar once the threshold
-              has been crossed at any point.
+              The bar visualises both halves: green = how close we are, red =
+              how far is still left. A ✓ <em>triggered</em> pill replaces the
+              bar once the trigger has been crossed at any point in the
+              market&apos;s history.
             </p>
             <p className="mt-3">
-              The column sorts by absolute distance so the closest-to-trigger
-              markets float to the top in ascending order — a quick way to find
-              edge cases where the book disagrees sharply with the underlying.
+              Click the Distance column header to sort closest-first — a fast
+              way to spot markets where the live data and the market odds
+              disagree sharply.
             </p>
           </Section>
 
-          <Section id="families" title="Market families">
+          <Section id="families" title="Market types">
             <p>
-              Every market is bucketed into one of six families based on what
-              its resolution rules look like. The chip row above the table
-              filters by family.
+              Every market gets tagged with one of six types based on what its
+              rules look like. The chip row above the table filters by type.
             </p>
             <dl className="mt-4 space-y-3 text-sm">
               <Family
                 label="Price"
-                ratio="51% of crypto-vertical volume"
-                desc="Binance spot price thresholds. Live; we read the price every refresh."
+                ratio="51% of crypto volume"
+                desc="Crypto price hits a target by a date (e.g. BTC ≥ $150k). Auto-checked against Binance spot."
               />
               <Family
                 label="Launch"
                 ratio="21%"
-                desc="FDV (fully-diluted valuation) at or after launch reaches some target. Deferred until on-chain wiring."
+                desc="A new token's value at launch — e.g. 'FDV above $500M one day after launch'. We can't auto-check these yet."
               />
               <Family
                 label="Holdings"
                 ratio="<1%"
-                desc="An entity's on-chain holdings move (e.g. MicroStrategy sells any Bitcoin). Deferred — needs Arkham/explorer wiring."
+                desc="Something a known entity holds changes — e.g. 'MicroStrategy sells any Bitcoin'. Currently checked manually."
               />
               <Family
                 label="Sale"
                 ratio="5%"
-                desc="A public sale of a token clears a target. Deferred."
+                desc="A public sale of a token reaches some milestone. Currently checked manually."
               />
               <Family
                 label="Subjective"
                 ratio="11%"
-                desc="UMA-arbitrated panel decides. No machine-readable trigger — flagged but never RC-scored."
+                desc="Polymarket's own judgment calls the outcome (editorial / political claims). No automated check possible — never scored."
               />
               <Family
                 label="Other"
                 ratio="rest"
-                desc="Resolution rules our parser couldn't structure. Shown for completeness; treat with caution."
+                desc="Rules our parser couldn't structure. Shown for completeness; read the source rule carefully."
               />
             </dl>
             <p className="mt-3 text-xs text-muted">
-              Coverage check: live-state families add up to ~92% of crypto-vertical
-              volume on the snapshot.
+              About 92% of crypto market volume falls into types we can
+              auto-check.
             </p>
           </Section>
 
-          <Section id="sources" title="Data sources">
+          <Section id="sources" title="Where the data comes from">
             <ul className="space-y-1 text-sm">
               <li>
-                <strong className="text-foreground">Markets, prices, books</strong>:
-                Polymarket Gamma API and CLOB v2.
+                <strong className="text-foreground">Markets, odds, order books</strong>:
+                Polymarket — pulled fresh every 15 minutes.
               </li>
               <li>
-                <strong className="text-foreground">Binance spot prices</strong>:
-                Binance public REST endpoints, refreshed on each pipeline run.
+                <strong className="text-foreground">Crypto prices</strong>:
+                Binance public price feeds (CryptoCompare as a backup).
               </li>
               <li>
-                <strong className="text-foreground">Resolution rules</strong>:
-                parsed from the rules text on each Polymarket market.
+                <strong className="text-foreground">Market rules</strong>:
+                parsed from each Polymarket market&apos;s own rules text.
               </li>
             </ul>
             <p className="mt-3 text-xs text-muted">
-              The API at <a href="/api/markets" className="text-accent hover:underline">/api/markets</a>{" "}
-              returns the same projection the table renders, so you can build on
-              top of it. Free, rate-limited, no auth.
+              The screener data is also available as JSON at{" "}
+              <a href="/api" className="text-accent hover:underline">/api</a>
+              {" "}— same shape the table uses, free, no auth required.
             </p>
           </Section>
 
           <Section id="trading" title="Trading">
             <p>
-              The Yes / No buttons on each row open an inline order ticket.
-              Limit and market orders are both supported; market orders show
-              an estimated fill price and slippage computed against the live
-              order book. Maker and taker fees are{" "}
-              <strong className="text-foreground">0% / 0%</strong> — Auspex adds
-              nothing on top of the underlying venue.
+              Each market row has Yes / No buttons that open an order form.
+              Both limit and market orders are supported; market orders show
+              the expected fill price based on the live order book. Trading
+              fees are{" "}
+              <strong className="text-foreground">0% / 0%</strong> — Auspex
+              doesn&apos;t add anything on top.
             </p>
             <p className="mt-3">
-              Orders are signed by your connected wallet (EIP-712) once per
-              session and posted through your existing account at the venue.
-              Auspex never custodies funds and never moves anything outside an
-              explicit signature from you.
+              Your wallet signs every order, and your funds stay in your
+              Polygon account the whole time. Auspex never holds money for
+              you. You can disconnect any time and your account works exactly
+              the same on polymarket.com.
             </p>
           </Section>
 
-          <Section id="disclaimer" title="Disclaimer">
+          <Section id="disclaimer" title="Heads-up">
             <p className="text-muted">
-              Auspex is a presentation layer over publicly available data,
-              for informational purposes only. Nothing here is investment
-              advice, a solicitation, or a recommendation. Prediction markets
-              involve real money and real risk; only place orders you understand
-              and can afford to lose. The screener does not custody funds — your
-              wallet signs every order, your deposit wallet pays.
+              Auspex is a presentation layer over public data, for
+              informational purposes only. Nothing here is investment advice
+              or a recommendation. Prediction markets involve real money and
+              real risk; only place orders you understand and can afford to
+              lose. We never hold your funds — every order is signed by your
+              own wallet.
             </p>
           </Section>
         </div>

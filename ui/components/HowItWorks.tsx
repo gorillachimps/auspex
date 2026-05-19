@@ -56,78 +56,83 @@ export function HowItWorks() {
               </button>
             </div>
 
-            <Section title="Resolution-source-as-signal">
+            <Section title="What makes Auspex different">
               <p>
-                Most prediction-market dashboards show implied % vs. an
-                external opinion model. Auspex reads each market&apos;s{" "}
-                <em>own stated resolution criterion</em> — the on-chain or
-                exchange feed it actually settles against — and shows the live
-                value next to the implied %. Your edge isn&apos;t our forecast;
-                it&apos;s the gap between consensus and the source.
+                Most prediction-market sites just show you the odds. Auspex
+                also checks the actual data each market settles on — the
+                Binance price, the on-chain treasury, the launch timestamp —
+                and shows you how close it is to triggering YES. Your edge
+                isn&apos;t our forecast; it&apos;s the gap between what the
+                market thinks and what the live data says.
               </p>
             </Section>
 
-            <Section title="Δ to trigger">
+            <Section title="Distance">
               <p>
-                Signed % from the current state to the threshold that resolves
-                YES. <span className="text-emerald-300">Positive</span> means
-                the source is above the line,{" "}
-                <span className="text-rose-300">negative</span> below. Sorted
-                ascending by absolute distance, so the closest-to-trigger float
-                to the top. <span className="text-emerald-300">✓ triggered</span>{" "}
-                means the threshold has already been crossed.
+                How far the live value is from triggering YES.{" "}
+                <span className="text-emerald-300">Positive</span> means the
+                live value is already above the line;{" "}
+                <span className="text-rose-300">negative</span> means it
+                needs to rise (or fall) more. The screener sorts by gap, so
+                the closest-to-trigger markets float to the top.{" "}
+                <span className="text-emerald-300">✓ triggered</span> means
+                the line has already been crossed.
               </p>
             </Section>
 
-            <Section title="Resolution Confidence (RC)">
+            <Section title="Clarity score">
               <p>
-                A composite score 0–100 of how legible the resolution path is.
+                A 0–100 score of how clearly a market will resolve. Higher =
+                cleaner read on YES or NO. We mix three things:
               </p>
               <ul className="mt-1 list-disc space-y-0.5 pl-5 text-foreground/80">
-                <li>0.55 × distance-to-trigger (closer = higher)</li>
-                <li>0.30 × time-pressure (sooner deadline = higher)</li>
-                <li>0.15 × log-volume (more market action = higher)</li>
+                <li>How close the live value is to triggering (55%)</li>
+                <li>How soon the market closes (30%)</li>
+                <li>How much volume it&apos;s seen (15%)</li>
               </ul>
               <p className="mt-2">
-                Only computed for live-state markets; deferred markets show
-                <span className="font-mono">&nbsp;—&nbsp;</span>.
+                Only scored for markets we can auto-check; subjective markets
+                (e.g. &quot;Will the SEC do X?&quot;) show
+                <span className="font-mono">&nbsp;—&nbsp;</span> because we
+                can&apos;t programmatically read their outcome.
               </p>
             </Section>
 
-            <Section title="Live vs. deferred">
+            <Section title="Auto-checked vs. manual markets">
               <p>
-                <span className="text-emerald-300">Live</span> markets have a
-                machine-readable trigger we can score against right now (e.g.
-                Binance BTC/USDT spot price). <span className="text-muted">Deferred</span>{" "}
-                markets resolve via on-chain queries we haven&apos;t wired yet
-                (Arkham wallet activity, holdings events) or via UMA arbitration
-                (subjective claims). The{" "}
+                <span className="text-emerald-300">Auto-checked</span>{" "}
+                markets settle on data we can read in real time — Binance
+                prices, on-chain wallet activity, launch timestamps. We score
+                these in full.{" "}
+                <span className="text-muted">Manual</span> markets resolve
+                via Polymarket&apos;s own judgment (subjective claims,
+                editorial calls). Toggle{" "}
                 <span className="rounded bg-emerald-500/15 px-1 py-0 text-[10px] font-semibold text-emerald-200 ring-1 ring-emerald-400/40">
                   Live only
                 </span>{" "}
-                toggle filters to the scoreable set.
+                to hide the manual ones.
               </p>
             </Section>
 
             <Section title="Fees & custody">
               <p>
-                Maker/taker fee is{" "}
+                Trading fees are{" "}
                 <span className="rounded-full bg-emerald-500/10 px-1.5 py-0 text-emerald-300 ring-1 ring-emerald-400/30">
                   0% / 0%
                 </span>{" "}
-                — Auspex adds nothing on top of the underlying venue. Orders are
-                signed by your connected wallet and routed through your existing
-                account; Auspex never custodies funds.
+                — Auspex doesn&apos;t add anything on top. Your wallet signs
+                orders directly; your funds stay in your account on Polygon.
+                Auspex never holds money for you.
               </p>
             </Section>
 
-            <Section title="Limitations">
+            <Section title="Heads-up">
               <p>
-                Snapshots refresh every minute on the home page; the underlying
-                rules data is parsed offline and may be hours old. Δ24h
-                histories are reconstructed from cumulative-change windows, not
-                a tick log. This is informational tooling, not financial
-                advice.
+                Prices refresh every minute. The underlying market list
+                rebuilds every 6 hours, so a brand-new market might take a
+                few hours to appear. 24-hour change numbers come from
+                Polymarket&apos;s rolling stats, not a tick-by-tick log. This
+                is informational — not financial advice.
               </p>
             </Section>
 

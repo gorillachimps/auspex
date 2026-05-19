@@ -116,7 +116,7 @@ export default async function MarketDetailPage({ params }: Props) {
           </div>
 
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <Card title="Δ to trigger">
+            <Card title="Distance to YES">
               <DeltaBar
                 distance={row.distancePct}
                 alreadyTriggered={row.alreadyTriggered}
@@ -124,23 +124,25 @@ export default async function MarketDetailPage({ params }: Props) {
               />
               {row.liveState === "live" && row.distancePct != null ? (
                 <p className="mt-2 text-[12px] text-muted">
-                  Threshold {row.thresholdValue != null ? fmtUSD(row.thresholdValue) : "—"} ·
+                  Trigger line: {row.thresholdValue != null ? fmtUSD(row.thresholdValue) : "—"} ·
                   {" "}
-                  current {fmtUSD(row.currentValue)} ·
+                  right now: {fmtUSD(row.currentValue)} ·
                   {" "}
-                  {(row.distancePct * 100).toFixed(2)}% away
+                  {(row.distancePct * 100).toFixed(2)}% to go
                 </p>
               ) : (
                 <p className="mt-2 text-[12px] text-muted">
-                  No live machine-readable trigger for this market.
+                  This market resolves manually (subjective call), so we can&apos;t
+                  auto-track how close it is.
                 </p>
               )}
             </Card>
-            <Card title="Resolution Confidence (RC)">
+            <Card title="Clarity">
               <RcBar rc={row.rc} />
               <p className="mt-2 text-[12px] text-muted">
-                Composite of distance ({"55%"}), time pressure ({"30%"}) and log-volume ({"15%"}). Higher
-                means a more legible resolution path.
+                How clearly this market resolves. We mix three things: how close the
+                live value is to triggering YES (55%), how soon the market closes (30%),
+                and how much volume it&apos;s seen (15%). Higher = cleaner read.
               </p>
             </Card>
           </div>

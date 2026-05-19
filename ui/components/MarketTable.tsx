@@ -143,8 +143,8 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
         id: "implied",
         header: () => (
           <Tooltip
-            label="PM"
-            hint="Implied probability that the market resolves YES — the midpoint of the live order book, expressed as a percentage."
+            label="Odds"
+            hint="What the market currently thinks the chance of YES is — drawn from the live order book. 50% = a coin flip; 90% = the market is confident it'll resolve YES."
           />
         ),
         cell: ({ getValue }) => <PmBar impliedYes={getValue() as number | null} />,
@@ -155,8 +155,8 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
         id: "source",
         header: () => (
           <Tooltip
-            label="Source"
-            hint="Where the resolution criterion is read from — e.g. Binance BTC/USDT spot prints, Arkham wallet activity, or Polymarket UMA arbitration for subjective markets."
+            label="Settles by"
+            hint="The data feed we check to decide the outcome — e.g. Binance spot price, on-chain treasury activity, or Polymarket's own judgment for subjective markets."
           />
         ),
         cell: ({ getValue }) => (
@@ -171,8 +171,8 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
         id: "state",
         header: () => (
           <Tooltip
-            label="State"
-            hint="The live value of whatever the market resolves on — e.g. spot BTC price, FDV at launch, holdings balance. Shows — for markets without a machine-readable trigger."
+            label="Right now"
+            hint="The live value from the settlement source — current price, treasury balance, etc. Shows — for markets where the outcome can't be auto-checked (subjective markets resolve manually)."
           />
         ),
         cell: ({ row }) => {
@@ -194,8 +194,8 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
         id: "delta",
         header: () => (
           <Tooltip
-            label="Δ to trigger"
-            hint="Signed % from current state to the threshold that resolves YES. Positive = above the line, negative = below. Sorted by distance from zero so the closest-to-trigger float to the top in ascending order."
+            label="Distance"
+            hint="How far the live value is from triggering YES. 0% = right at the line, +5% = already above, −10% = needs to fall 10% more. Click to sort closest-to-trigger first."
           />
         ),
         cell: ({ row }) => {
@@ -219,8 +219,8 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
         id: "rc",
         header: () => (
           <Tooltip
-            label="RC"
-            hint="Resolution Confidence (0–100). 0.55·distance-to-trigger + 0.30·time-pressure + 0.15·log-volume. Higher = more legible resolution path. Only computed for live-state markets."
+            label="Clarity"
+            hint="How clearly this market will resolve. Higher = cleaner path to YES or NO. Mixes how close we are to triggering, how soon it closes, and how much volume it's seen. Only scored for markets we can auto-check."
           />
         ),
         cell: ({ getValue }) => <RcBar rc={getValue() as number | null} />,
@@ -229,7 +229,12 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
       }),
       columnHelper.accessor("endDate", {
         id: "days",
-        header: "Days",
+        header: () => (
+          <Tooltip
+            label="Closes in"
+            hint="Days until trading ends for this market. Click to sort by closing date — ending soonest first."
+          />
+        ),
         cell: ({ getValue }) => (
           <span className="tabular text-[12px] text-muted">
             {fmtDaysLeft(getValue() as string | null)}
@@ -240,14 +245,14 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
           const bt = Date.parse(b.original.endDate ?? "") || Number.POSITIVE_INFINITY;
           return at - bt;
         },
-        size: 56,
+        size: 80,
       }),
       columnHelper.accessor("oneDayChange", {
         id: "delta24h",
         header: () => (
           <Tooltip
-            label="Δ24h"
-            hint="Change in implied probability over the last 24 hours, in probability points (pp). 1 pp = 1%. Sorted by absolute value so the biggest movers float to the top."
+            label="24h move"
+            hint="How the odds shifted in the last 24 hours, in percentage points. ▲ 5pp = went up 5%; ▼ 2pp = went down 2%. Click to sort by biggest movers."
             align="end"
           />
         ),
@@ -277,8 +282,8 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
         id: "volume24h",
         header: () => (
           <Tooltip
-            label="Vol 24h"
-            hint="Notional volume traded in the last 24 hours, in USDC."
+            label="24h volume"
+            hint="Total dollar value traded on this market in the last 24 hours. Click to sort by busiest markets."
             align="end"
           />
         ),

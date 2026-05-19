@@ -30,8 +30,8 @@ export default function PortfolioPage() {
             </a>
           </div>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Open positions for your deposit wallet, valued at the current mid
-            price. Refreshed every 30 s.
+            Your open Polymarket positions, valued at the current market
+            price. Updates every 30 seconds.
           </p>
           <TotalBalance />
           <PortfolioView />

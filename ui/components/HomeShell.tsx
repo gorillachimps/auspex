@@ -105,10 +105,11 @@ export function HomeShell({
                 Crypto bets, sorted by signal.
               </h1>
               <p className="mt-1 max-w-2xl text-sm text-muted">
-                Read each market against the on-chain or exchange feed it
-                actually settles on. Distance to trigger and Resolution
-                Confidence (RC) are sortable — the closest-to-triggering float
-                to the top.
+                For every market, we check the live data it settles on —
+                Binance prices, token launches, treasury balances — and show
+                how close it is to flipping YES. Click any column to sort:
+                which markets are closest to triggering, which close soonest,
+                which have the most action.
               </p>
               <div
                 className="mt-2 flex items-center gap-2"
