@@ -57,5 +57,20 @@ export function useStarred() {
     setStarred(next);
   }, []);
 
-  return { starred, toggle };
+  /** Additively merge a list of market IDs into the user's existing watchlist.
+   *  Used by the share-import flow on /watchlists — accept doesn't clobber
+   *  the user's pre-existing stars. Returns the number actually added (i.e.
+   *  excluding IDs already in the set). */
+  const mergeStarred = useCallback((ids: string[]): number => {
+    const current = readSet();
+    const before = current.size;
+    for (const id of ids) {
+      if (id && typeof id === "string") current.add(id);
+    }
+    writeSet(current);
+    setStarred(current);
+    return current.size - before;
+  }, []);
+
+  return { starred, toggle, mergeStarred };
 }

@@ -73,6 +73,14 @@ export default async function MarketDetailPage({ params }: Props) {
               >
                 {meta.label}
               </span>
+              {urgencyForEnd(row.endDate) === "ended" ? (
+                <span
+                  className="inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300 ring-1 ring-amber-400/40"
+                  title="Trading is closed. Waiting on oracle / arbitration to finalise the outcome."
+                >
+                  Settling
+                </span>
+              ) : null}
               <span className="text-[12px] text-muted">
                 {fmtSourceLabel(row.source, row.pair)}
               </span>

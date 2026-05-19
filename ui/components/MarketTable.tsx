@@ -118,6 +118,11 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
           const meta = familyMeta(r.family);
           const tone = FAMILY_TONE_CLASSES[meta.tone];
           const sharp = isSharpSignal(r);
+          // "Settling" = the market's close date is in the past but it's
+          // still in the active snapshot — i.e. trading is over but the
+          // outcome hasn't been finalised yet (typically a UMA / oracle
+          // arbitration phase). Don't try to trade these.
+          const settling = urgencyForEnd(r.endDate) === "ended";
           return (
             <div className="flex min-w-0 flex-col gap-0.5 py-1">
               <div className="flex min-w-0 items-center gap-1.5">
@@ -142,14 +147,24 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
                   {r.question}
                 </a>
               </div>
-              <span
-                className={cn(
-                  "inline-flex w-fit items-center rounded-full px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide ring-1",
-                  tone,
-                )}
-              >
-                {meta.short}
-              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span
+                  className={cn(
+                    "inline-flex w-fit items-center rounded-full px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide ring-1",
+                    tone,
+                  )}
+                >
+                  {meta.short}
+                </span>
+                {settling ? (
+                  <span
+                    className="inline-flex w-fit items-center rounded-full bg-amber-500/15 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-amber-300 ring-1 ring-amber-400/40"
+                    title="Trading is closed for this market. It's waiting on its oracle / arbitration to finalise the outcome — don't try to place orders."
+                  >
+                    Settling
+                  </span>
+                ) : null}
+              </div>
             </div>
           );
         },

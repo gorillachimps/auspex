@@ -6,6 +6,7 @@ import { useClobSession } from "./useClobSession";
 const POLL_MS = 30_000;
 const HOST = "https://data-api.polymarket.com";
 const STORAGE_KEY = "auspex:notify:enabled";
+const SW_URL = "/sw.js";
 
 type Trade = {
   side?: "BUY" | "SELL";
@@ -29,20 +30,25 @@ export type NotificationPermissionState =
 
 /**
  * Polls the data-api `/trades?user=…` endpoint every 30 s for the connected
- * account, diffs against the trades we've already seen, and pops a browser
- * Notification on each new fill. The first poll is a "bootstrap" — it just
- * records what's already there without notifying, so existing trades from
- * before the page loaded don't all blow up the notification tray at once.
+ * account, diffs against trades we've already seen, and pops a browser
+ * notification on each new fill. The first poll is a "bootstrap" — records
+ * what's already there without notifying so existing trades from before the
+ * page loaded don't all blow up the notification tray at once.
  *
- * Not a "real" Web Push notification — those need a Service Worker + a
- * server to send pushes when the tab is closed. This works only while a
- * Auspex tab is open; useful for active traders, useless for someone who
- * walks away.
+ * Architecture, in two layers:
+ *   1. **Page-side polling.** Works only while at least one Auspex tab is
+ *      open. Triggers `ServiceWorkerRegistration.showNotification` (or falls
+ *      back to `new Notification()` when no SW is registered). The SW
+ *      handles click events so notifications survive a page reload.
+ *   2. **Service worker** (public/sw.js). Registered on mount when the
+ *      browser supports it. Required for iOS Safari notifications, and a
+ *      foundation for real Web Push (server-sent pushes when the tab is
+ *      closed) once we add the server-side subscription infrastructure.
  *
- * Enabling is opt-in. The user clicks the bell in the TopNav (or wherever
- * `request()` is hooked up), the browser shows its native permission prompt,
- * and after granting we set a localStorage flag so the polling resumes on
- * subsequent visits without re-prompting.
+ * Enabling is opt-in. The user clicks the bell in the TopNav, the browser
+ * shows its native permission prompt, and after granting we set a
+ * localStorage flag so the polling resumes on subsequent visits without
+ * re-prompting.
  */
 export function useFillNotifications() {
   const session = useClobSession();
@@ -51,6 +57,7 @@ export function useFillNotifications() {
     useState<NotificationPermissionState>("default");
   const [enabled, setEnabled] = useState(false);
   const seenIdsRef = useRef<Set<string>>(new Set());
+  const swRegistrationRef = useRef<ServiceWorkerRegistration | null>(null);
 
   useEffect(() => {
     if (typeof Notification === "undefined") {
@@ -62,6 +69,21 @@ export function useFillNotifications() {
       setEnabled(window.localStorage.getItem(STORAGE_KEY) === "1");
     } catch {
       // ignore
+    }
+
+    // Register the service worker on mount. Failures are silently
+    // tolerated — the older `new Notification(...)` path remains as a
+    // fallback for browsers without SW support or where registration is
+    // blocked (private mode, dev with HTTP, etc.).
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register(SW_URL, { scope: "/" })
+        .then((reg) => {
+          swRegistrationRef.current = reg;
+        })
+        .catch(() => {
+          // ignore — fall back to the page-only Notification path
+        });
     }
   }, []);
 
@@ -135,21 +157,41 @@ export function useFillNotifications() {
             t.sizeUsdc != null
               ? t.sizeUsdc
               : (t.size ?? 0) * (t.price ?? 0);
-          try {
-            const n = new Notification(
-              `${sideLabel} ${outcomeLabel} @ $${price}`,
-              {
-                body: `${t.title ?? "Polymarket fill"} · $${usdc.toFixed(2)} filled`,
+          const title = `${sideLabel} ${outcomeLabel} @ $${price}`;
+          const body = `${t.title ?? "Polymarket fill"} · $${usdc.toFixed(2)} filled`;
+          const targetUrl = t.slug ? `/markets/${t.slug}` : "/activity";
+
+          // Prefer the service worker — required for iOS Safari, survives
+          // page reloads, and gives us the click handler defined in sw.js
+          // (focuses the existing Auspex tab and navigates it instead of
+          // popping a new window). Falls back to the page-side Notification
+          // constructor when no SW is registered.
+          const reg = swRegistrationRef.current;
+          if (reg && typeof reg.showNotification === "function") {
+            try {
+              await reg.showNotification(title, {
+                body,
                 tag: id,
                 icon: "/logo.png",
                 badge: "/icon.svg",
-              },
-            );
-            // Clicking takes the user to the market detail page if we have a slug.
+                data: { url: targetUrl },
+              });
+              continue;
+            } catch {
+              // Fall through to the legacy path
+            }
+          }
+          try {
+            const n = new Notification(title, {
+              body,
+              tag: id,
+              icon: "/logo.png",
+              badge: "/icon.svg",
+            });
             if (t.slug) {
               n.onclick = () => {
                 window.focus();
-                window.location.href = `/markets/${t.slug}`;
+                window.location.href = targetUrl;
                 n.close();
               };
             }

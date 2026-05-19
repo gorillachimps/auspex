@@ -1,7 +1,7 @@
 "use client";
 
 import type { SortingState } from "@tanstack/react-table";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Sparkle } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { familyMeta, FAMILY_TONE_CLASSES } from "@/lib/families";
@@ -11,6 +11,7 @@ import {
   fmtSignedPP,
   fmtSourceLabel,
   fmtUSD,
+  urgencyForEnd,
 } from "@/lib/format";
 import type { TableRow } from "@/lib/types";
 import { DeltaBar } from "./DeltaBar";
@@ -18,6 +19,18 @@ import { ExpandedRow } from "./ExpandedRow";
 import { PmBar } from "./PmBar";
 import { RcBar } from "./RcBar";
 import { StarToggle } from "./StarToggle";
+
+/** Same criterion as the desktop sigil — flag the small subset of rows
+ *  where Clarity is high, distance is still material, market is uncertain,
+ *  not yet triggered. Kept in sync with MarketTable.isSharpSignal. */
+function isSharpSignal(r: TableRow): boolean {
+  if (r.rc == null || r.rc < 70) return false;
+  if (r.distancePct == null || Math.abs(r.distancePct) < 0.05) return false;
+  if (r.alreadyTriggered) return false;
+  if (r.impliedYes == null) return false;
+  if (r.impliedYes < 0.2 || r.impliedYes > 0.8) return false;
+  return true;
+}
 
 type Props = {
   rows: TableRow[];
@@ -104,8 +117,19 @@ export function MobileMarketList({ rows, sorting, onClearFilters }: Props) {
         const meta = familyMeta(r.family);
         const tone = FAMILY_TONE_CLASSES[meta.tone];
         const isOpen = expanded.has(r.id);
-        const tradable = !!r.tokenYes && !!r.tokenNo;
+        const tier = urgencyForEnd(r.endDate);
+        const settling = tier === "ended";
+        const tradable = !!r.tokenYes && !!r.tokenNo && !settling;
+        const sharp = isSharpSignal(r);
         const change = fmtSignedPP(r.oneDayChange);
+        const daysCls =
+          tier === "urgent"
+            ? "text-rose-300 font-medium"
+            : tier === "soon"
+              ? "text-amber-300"
+              : tier === "ended"
+                ? "text-muted-2 italic"
+                : "text-muted-2";
         return (
           <li
             key={r.id}
@@ -126,32 +150,56 @@ export function MobileMarketList({ rows, sorting, onClearFilters }: Props) {
                 )}
               </button>
               <StarToggle marketId={r.id} />
-              <a
-                href={`/markets/${r.slug}`}
-                className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-foreground hover:text-accent"
-              >
-                {r.question}
-              </a>
-              <span
-                className={cn(
-                  "ml-auto inline-flex shrink-0 items-center rounded-full px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide ring-1",
-                  tone,
-                )}
-              >
-                {meta.short}
-              </span>
+              <div className="min-w-0 flex-1">
+                <a
+                  href={`/markets/${r.slug}`}
+                  className="block text-[13px] font-medium leading-snug text-foreground hover:text-accent"
+                >
+                  {sharp ? (
+                    <Sparkle
+                      className="mr-1 inline h-3 w-3 align-text-top text-accent"
+                      aria-hidden="true"
+                      role="img"
+                    >
+                      <title>
+                        Sharp signal — high clarity with the market still
+                        pricing it as uncertain.
+                      </title>
+                    </Sparkle>
+                  ) : null}
+                  {r.question}
+                </a>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "inline-flex items-center rounded-full px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide ring-1",
+                      tone,
+                    )}
+                  >
+                    {meta.short}
+                  </span>
+                  {settling ? (
+                    <span
+                      className="inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-amber-300 ring-1 ring-amber-400/40"
+                      title="Trading closed — waiting on oracle / arbitration."
+                    >
+                      Settling
+                    </span>
+                  ) : null}
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <div className="mb-0.5 text-[10px] uppercase tracking-wider text-muted-2">
-                  PM
+                  Odds
                 </div>
                 <PmBar impliedYes={r.impliedYes} />
               </div>
               <div>
                 <div className="mb-0.5 text-[10px] uppercase tracking-wider text-muted-2">
-                  RC
+                  Clarity
                 </div>
                 <RcBar rc={r.rc} />
               </div>
@@ -159,7 +207,7 @@ export function MobileMarketList({ rows, sorting, onClearFilters }: Props) {
 
             <div>
               <div className="mb-0.5 text-[10px] uppercase tracking-wider text-muted-2">
-                Δ to trigger
+                Distance
               </div>
               <DeltaBar
                 distance={r.distancePct}
@@ -175,7 +223,9 @@ export function MobileMarketList({ rows, sorting, onClearFilters }: Props) {
                   {fmtUSD(r.currentValue)}
                 </span>
               ) : null}
-              <span className="text-muted-2">{fmtDaysLeft(r.endDate)}</span>
+              <span className={cn("tabular", daysCls)}>
+                {fmtDaysLeft(r.endDate)}
+              </span>
               {change ? (
                 <span
                   className={cn(
@@ -189,6 +239,21 @@ export function MobileMarketList({ rows, sorting, onClearFilters }: Props) {
                 >
                   {change.sign > 0 ? "▲" : change.sign < 0 ? "▼" : ""}{" "}
                   {change.text}
+                </span>
+              ) : null}
+              {r.liquidity != null && r.liquidity > 0 ? (
+                <span
+                  className={cn(
+                    "tabular",
+                    r.liquidity >= 10_000
+                      ? "text-accent"
+                      : r.liquidity >= 1_000
+                        ? "text-foreground"
+                        : "text-muted-2",
+                  )}
+                  title="Depth — how much you could trade near the current price"
+                >
+                  {fmtCompactUSD(r.liquidity)} depth
                 </span>
               ) : null}
               <span className="ml-auto tabular">
