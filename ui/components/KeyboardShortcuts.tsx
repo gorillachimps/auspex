@@ -1,15 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
-
-const SHORTCUTS: Array<{ keys: string[]; label: string }> = [
-  { keys: ["/"], label: "Focus search" },
-  { keys: ["Esc"], label: "Clear filters / blur input" },
-  { keys: ["g", "h"], label: "Go to screener home" },
-  { keys: ["g", "w"], label: "Go to watchlists" },
-  { keys: ["?"], label: "Show / hide this help" },
-];
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -24,8 +15,19 @@ type Props = {
   hasFilters?: boolean;
 };
 
+/**
+ * Page-scoped keyboard handler for the screener. Bound to:
+ *   - "/"          focus the screener search input
+ *   - Esc          blur input, or if idle + filters active, clear them
+ *   - "g h"        go to home (screener)
+ *   - "g w"        go to watchlists
+ *
+ * The "?" shortcut and the help modal live in `ShortcutsHelpButton` (mounted
+ * in the TopNav) so the help is reachable from every page — keeping that
+ * behaviour in one place avoids double-toggling when both components are
+ * mounted.
+ */
 export function KeyboardShortcuts({ onClearFilters, hasFilters }: Props) {
-  const [helpOpen, setHelpOpen] = useState(false);
   const [chord, setChord] = useState<string | null>(null);
 
   useEffect(() => {
@@ -38,16 +40,11 @@ export function KeyboardShortcuts({ onClearFilters, hasFilters }: Props) {
       const key = ev.key;
       const typing = isTypingTarget(ev.target);
 
-      // Esc: blur input first; if nothing focused (or already idle) and we have
-      // active filters, clear them.
+      // Esc: blur input first; if nothing focused and we have active filters,
+      // clear them. (Help-modal Esc is owned by ShortcutsHelpButton.)
       if (key === "Escape") {
         if (typing) {
           (ev.target as HTMLElement).blur();
-          ev.preventDefault();
-          return;
-        }
-        if (helpOpen) {
-          setHelpOpen(false);
           ev.preventDefault();
           return;
         }
@@ -68,12 +65,6 @@ export function KeyboardShortcuts({ onClearFilters, hasFilters }: Props) {
           input.select();
           ev.preventDefault();
         }
-        return;
-      }
-
-      if (key === "?") {
-        setHelpOpen((v) => !v);
-        ev.preventDefault();
         return;
       }
 
@@ -104,68 +95,13 @@ export function KeyboardShortcuts({ onClearFilters, hasFilters }: Props) {
       window.removeEventListener("keydown", onKey);
       if (chordTimeout) clearTimeout(chordTimeout);
     };
-  }, [chord, helpOpen, hasFilters, onClearFilters]);
+  }, [chord, hasFilters, onClearFilters]);
 
+  if (!chord) return null;
   return (
-    <>
-      {chord ? (
-        <div className="fixed bottom-4 left-4 z-50 rounded-md border border-border-strong bg-surface px-3 py-1.5 text-[12px] tabular text-foreground shadow-lg">
-          <kbd className="font-mono">{chord}</kbd>
-          <span className="ml-1 text-muted-2">…</span>
-        </div>
-      ) : null}
-
-      {helpOpen ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4"
-          onClick={() => setHelpOpen(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm rounded-lg border border-border-strong bg-surface p-4 shadow-2xl"
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold tracking-tight">
-                Keyboard shortcuts
-              </h2>
-              <button
-                type="button"
-                aria-label="Close"
-                onClick={() => setHelpOpen(false)}
-                className="grid h-6 w-6 place-items-center rounded text-muted hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <ul className="space-y-1.5 text-[12px]">
-              {SHORTCUTS.map((s) => (
-                <li key={s.keys.join("+")} className="flex items-center justify-between">
-                  <span className="text-foreground/80">{s.label}</span>
-                  <span className="flex items-center gap-1">
-                    {s.keys.map((k, i) => (
-                      <kbd
-                        key={i}
-                        className="rounded border border-border-strong bg-background px-1.5 py-0.5 font-mono text-[11px] text-foreground"
-                      >
-                        {k}
-                      </kbd>
-                    ))}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-3 text-[10px] text-muted-2">
-              Press{" "}
-              <kbd className="rounded border border-border-strong bg-background px-1 font-mono">
-                Esc
-              </kbd>{" "}
-              to close.
-            </p>
-          </div>
-        </div>
-      ) : null}
-    </>
+    <div className="fixed bottom-4 left-4 z-50 rounded-md border border-border-strong bg-surface px-3 py-1.5 text-[12px] tabular text-foreground shadow-lg">
+      <kbd className="font-mono">{chord}</kbd>
+      <span className="ml-1 text-muted-2">…</span>
+    </div>
   );
 }

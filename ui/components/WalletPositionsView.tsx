@@ -3,6 +3,11 @@
 import { ExternalLink } from "lucide-react";
 import type { Position } from "@/lib/useUserPositions";
 import { cn } from "@/lib/cn";
+import { fmtCents, fmtShares, fmtUSDSignedText } from "@/lib/format";
+import { EmptyState } from "./ui/EmptyState";
+import { LoadingState } from "./ui/LoadingState";
+
+const fmtSignedUSD = fmtUSDSignedText;
 
 type Props = {
   positions: Position[] | null;
@@ -18,23 +23,24 @@ type Props = {
 export function WalletPositionsView({ positions, loading, error }: Props) {
   if (error) {
     return (
-      <section className="rounded-md border border-rose-400/40 bg-rose-500/5 px-3 py-2 text-[12px] text-rose-200">
-        Couldn&apos;t load positions: {error}
-      </section>
+      <EmptyState
+        compact
+        title="Couldn't load positions"
+        body={error}
+        tone="error"
+      />
     );
   }
   if (positions == null) {
-    return (
-      <section className="rounded-md border border-border bg-surface/40 p-4 text-[12px] text-muted">
-        Loading positions…
-      </section>
-    );
+    return <LoadingState variant="panel" compact title="Loading positions…" />;
   }
   if (positions.length === 0) {
     return (
-      <section className="rounded-md border border-border bg-surface/40 p-4 text-[12px] text-muted">
-        No open positions.
-      </section>
+      <EmptyState
+        compact
+        title="No open positions"
+        body="This wallet doesn't have any open Polymarket positions."
+      />
     );
   }
 
@@ -128,21 +134,3 @@ export function WalletPositionsView({ positions, loading, error }: Props) {
   );
 }
 
-function fmtShares(n: number): string {
-  if (!isFinite(n)) return "—";
-  if (n >= 10_000) return `${(n / 1000).toFixed(1)}k`;
-  return n.toFixed(n >= 100 ? 0 : 2);
-}
-
-function fmtCents(p: number): string {
-  if (!isFinite(p)) return "—";
-  return `${(p * 100).toFixed(1)}¢`;
-}
-
-function fmtSignedUSD(n: number): string {
-  if (!isFinite(n) || Math.abs(n) < 0.005) return "$0.00";
-  const abs = Math.abs(n);
-  const sign = n > 0 ? "+" : "−";
-  if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(1)}k`;
-  return `${sign}$${abs.toFixed(2)}`;
-}

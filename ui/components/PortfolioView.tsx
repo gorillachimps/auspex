@@ -1,9 +1,40 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { Loader2, RefreshCw, Wallet, AlertCircle, ExternalLink } from "lucide-react";
+import {
+  Loader2,
+  RefreshCw,
+  ExternalLink,
+  Download,
+  Search,
+  X,
+} from "lucide-react";
 import { useClobSession } from "@/lib/useClobSession";
 import { cn } from "@/lib/cn";
+import { csvFilename, downloadCsv, toCsv } from "@/lib/csv";
+import {
+  fmtAgoWithSuffix,
+  fmtCloseIn,
+  fmtPctSigned,
+  fmtUSD,
+  fmtUSDSigned,
+  urgencyForEnd,
+} from "@/lib/format";
+import { EmptyState } from "./ui/EmptyState";
+import { LoadingState } from "./ui/LoadingState";
+import { SortableTh, Td, Th } from "./ui/DataTable";
+import type { SortDir } from "./ui/DataTable";
+import { MobilePositionList } from "./MobilePositionList";
+
+type SortKey =
+  | "market"
+  | "side"
+  | "shares"
+  | "avgPrice"
+  | "curPrice"
+  | "value"
+  | "pnl"
+  | "endDate";
 
 const REFRESH_MS = 30_000;
 const POSITIONS_HOST = "https://data-api.polymarket.com";
@@ -37,45 +68,46 @@ type State = {
   positions: Position[] | null;
   loading: boolean;
   error: string | null;
+  fetchedAt: number | null;
 };
 
-const ZERO: State = { positions: null, loading: false, error: null };
+const ZERO: State = { positions: null, loading: false, error: null, fetchedAt: null };
 
-function fmtUSD(n: number): string {
-  if (!isFinite(n)) return "—";
-  if (Math.abs(n) < 0.01) return "$0.00";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : 2,
-  }).format(n);
-}
-
-function fmtSignedUSD(n: number): { text: string; sign: 1 | 0 | -1 } {
-  if (!isFinite(n) || Math.abs(n) < 0.005) return { text: "$0.00", sign: 0 };
-  return { text: fmtUSD(n), sign: n > 0 ? 1 : -1 };
-}
-
-function fmtPct(n: number): string {
-  if (!isFinite(n) || Math.abs(n) < 0.05) return "—";
-  return `${n > 0 ? "+" : ""}${n.toFixed(1)}%`;
-}
-
-function fmtDate(iso: string | undefined): string {
-  if (!iso) return "—";
-  const t = Date.parse(iso);
-  if (!isFinite(t)) return iso;
-  const ms = t - Date.now();
-  if (ms <= 0) return "ended";
-  const d = Math.floor(ms / 86_400_000);
-  if (d < 1) return "<1d";
-  return `${d}d`;
-}
+// All number/date formatting comes from lib/format. Aliases below map the
+// in-file shorthand we use in JSX to the canonical names — saves clutter
+// at call sites without forcing a rename of every old reference.
+const fmtSignedUSD = fmtUSDSigned;
+const fmtPct = fmtPctSigned;
+const fmtDate = fmtCloseIn;
+const fmtAgo = fmtAgoWithSuffix;
 
 export function PortfolioView() {
   const session = useClobSession();
   const funder = session.funderAddress;
   const [state, setState] = useState<State>(ZERO);
+  // Default sort: best winners on top — what most traders want first.
+  const [sortKey, setSortKey] = useState<SortKey>("pnl");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [query, setQuery] = useState("");
+  // Tick once a second so the "Updated Xs ago" label stays fresh between
+  // auto-refresh ticks. Cheap — one re-render per second, no network.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Toggle direction when clicking the same column; switch to that column
+  // with a sensible default direction otherwise (descending for numeric,
+  // ascending for text/date).
+  function setSort(next: SortKey) {
+    if (next === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(next);
+    setSortDir(next === "market" || next === "endDate" ? "asc" : "desc");
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -94,13 +126,14 @@ export function PortfolioView() {
         const data = await r.json();
         if (cancelled) return;
         const positions: Position[] = Array.isArray(data) ? data : [];
-        setState({ positions, loading: false, error: null });
+        setState({ positions, loading: false, error: null, fetchedAt: Date.now() });
       } catch (e) {
         if (cancelled) return;
         setState({
           positions: null,
           loading: false,
           error: (e as Error).message,
+          fetchedAt: null,
         });
       } finally {
         if (!cancelled) timer = setTimeout(load, REFRESH_MS);
@@ -129,57 +162,124 @@ export function PortfolioView() {
     return { count, totalValue, totalPnl, redeemable };
   }, [state.positions]);
 
+  const sortedPositions = useMemo(() => {
+    if (!state.positions) return null;
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? state.positions.filter((p) => p.title.toLowerCase().includes(q))
+      : state.positions;
+    const arr = [...filtered];
+    const dir = sortDir === "asc" ? 1 : -1;
+    const cmpNum = (a: number, b: number) => (a - b) * dir;
+    arr.sort((a, b) => {
+      switch (sortKey) {
+        case "market":
+          return a.title.localeCompare(b.title) * dir;
+        case "side":
+          // Yes < No alphabetically — fine as a deterministic group sort.
+          return a.outcome.localeCompare(b.outcome) * dir;
+        case "shares":
+          return cmpNum(a.size, b.size);
+        case "avgPrice":
+          return cmpNum(a.avgPrice, b.avgPrice);
+        case "curPrice":
+          return cmpNum(a.curPrice, b.curPrice);
+        case "value":
+          return cmpNum(a.currentValue, b.currentValue);
+        case "pnl":
+          return cmpNum(a.cashPnl, b.cashPnl);
+        case "endDate": {
+          // Missing endDate sorts to the very end regardless of direction —
+          // those positions aren't bound by a closing date.
+          const ta = a.endDate ? Date.parse(a.endDate) : Number.NaN;
+          const tb = b.endDate ? Date.parse(b.endDate) : Number.NaN;
+          if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+          if (Number.isNaN(ta)) return 1;
+          if (Number.isNaN(tb)) return -1;
+          return (ta - tb) * dir;
+        }
+        default:
+          return 0;
+      }
+    });
+    return arr;
+  }, [state.positions, sortKey, sortDir, query]);
+
+  const totalLoaded = state.positions?.length ?? 0;
+  const shownCount = sortedPositions?.length ?? 0;
+  const filterActive = query.trim().length > 0;
+
   if (session.status === "disabled") {
     return (
-      <Empty
-        title="Trading not configured"
-        body="Set NEXT_PUBLIC_PRIVY_APP_ID to enable wallet features."
-      />
+      <div className="mt-8">
+        <EmptyState
+          title="Trading isn't enabled on this deploy"
+          body="The screener still works — head back to the home page to browse markets."
+        />
+      </div>
     );
   }
   if (session.status === "loading") {
-    return <Empty title="Loading…" body="Privy is initialising." />;
+    return (
+      <div className="mt-8">
+        <LoadingState
+          variant="panel"
+          title="Connecting…"
+          body="Setting up the wallet connection."
+        />
+      </div>
+    );
   }
   if (session.status === "unconnected") {
     return (
-      <Empty
-        title="Wallet not connected"
-        body="Connect a wallet from the top-right to see your Polymarket positions."
-      />
+      <div className="mt-8">
+        <EmptyState
+          title="Connect your wallet to see positions"
+          body="Use the Connect button in the top-right. Your wallet signs everything — Auspex never takes custody."
+        />
+      </div>
     );
   }
   if (session.status === "no-funder") {
     return (
-      <Empty
-        title="Deposit wallet missing"
-        body="Set your deposit-wallet address from the Connect menu."
-      />
+      <div className="mt-8">
+        <EmptyState
+          title="One more step — set your deposit wallet"
+          body="Open the Connect menu in the top-right to point Auspex at your Polymarket account."
+        />
+      </div>
     );
   }
   if (state.loading && !state.positions) {
     return (
-      <Empty
-        title="Fetching positions…"
-        body="Querying the Polymarket data API."
-        icon={<Loader2 className="h-5 w-5 animate-spin text-accent" />}
-      />
+      <div className="mt-8">
+        <LoadingState
+          variant="panel"
+          title="Pulling your positions…"
+          body="Fetching from Polymarket. This usually takes a second."
+        />
+      </div>
     );
   }
   if (state.error) {
     return (
-      <Empty
-        title="Couldn't fetch positions"
-        body={state.error}
-        tone="error"
-      />
+      <div className="mt-8">
+        <EmptyState
+          title="Couldn't load your positions"
+          body={state.error}
+          tone="error"
+        />
+      </div>
     );
   }
   if (!state.positions || state.positions.length === 0) {
     return (
-      <Empty
-        title="No open positions"
-        body="Place a YES / NO order from the screener and any filled shares will appear here. Closed-out positions (net zero) don't show — only currently-held outcomes do."
-      />
+      <div className="mt-8">
+        <EmptyState
+          title="No open positions yet"
+          body="Place a YES or NO order from the screener and any filled shares will appear here. Closed-out positions (net zero) drop off — only outcomes you currently hold show up."
+        />
+      </div>
     );
   }
 
@@ -188,7 +288,14 @@ export function PortfolioView() {
       <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-border bg-surface/40 px-3 py-2">
         {summary ? (
           <>
-            <Stat label="Positions" value={summary.count.toLocaleString()} />
+            <Stat
+              label={filterActive ? "Shown" : "Positions"}
+              value={
+                filterActive
+                  ? `${shownCount.toLocaleString()} / ${summary.count.toLocaleString()}`
+                  : summary.count.toLocaleString()
+              }
+            />
             <span className="text-border-strong" aria-hidden="true">·</span>
             <Stat label="Mark value" value={fmtUSD(summary.totalValue)} />
             <span className="text-border-strong" aria-hidden="true">·</span>
@@ -206,17 +313,72 @@ export function PortfolioView() {
             {summary.redeemable > 0 ? (
               <>
                 <span className="text-border-strong" aria-hidden="true">·</span>
-                <Stat
-                  label="Redeemable"
-                  value={`${summary.redeemable}`}
-                  tone="emerald"
-                  hint="settled markets, ready to claim"
-                />
+                <a
+                  href="https://polymarket.com/portfolio"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open Polymarket to claim your settled markets"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400/40 bg-emerald-500/15 px-2.5 py-1 text-[12px] font-semibold text-emerald-200 hover:bg-emerald-500/25"
+                >
+                  Redeem {summary.redeemable} on Polymarket
+                  <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                </a>
               </>
             ) : null}
           </>
         ) : null}
-        <div className="ml-auto">
+        {state.fetchedAt ? (
+          <span
+            className="text-[10px] text-muted-2 tabular"
+            title={new Date(state.fetchedAt).toLocaleTimeString()}
+          >
+            Updated {fmtAgo(now - state.fetchedAt)}
+          </span>
+        ) : null}
+        <div className="ml-auto flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              if (!state.positions || state.positions.length === 0) return;
+              const headers = [
+                "market",
+                "outcome",
+                "shares",
+                "avg_price",
+                "current_price",
+                "current_value_usdc",
+                "cash_pnl_usdc",
+                "percent_pnl",
+                "redeemable",
+                "end_date",
+                "slug",
+                "asset",
+                "condition_id",
+              ];
+              const rows = state.positions.map((p) => [
+                p.title,
+                p.outcome,
+                p.size,
+                p.avgPrice,
+                p.curPrice,
+                p.currentValue,
+                p.cashPnl,
+                p.percentPnl,
+                p.redeemable,
+                p.endDate ?? "",
+                p.slug,
+                p.asset,
+                p.conditionId,
+              ]);
+              downloadCsv(csvFilename("positions"), toCsv(headers, rows));
+            }}
+            disabled={!state.positions || state.positions.length === 0}
+            title="Download positions as a CSV file"
+            className="inline-flex items-center gap-1 rounded-md border border-border-strong bg-surface px-2 py-1 text-[11px] font-medium text-muted hover:bg-surface-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download className="h-3 w-3" aria-hidden="true" />
+            Export CSV
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -229,6 +391,7 @@ export function PortfolioView() {
                     positions: Array.isArray(d) ? d : [],
                     loading: false,
                     error: null,
+                    fetchedAt: Date.now(),
                   }),
                 )
                 .catch((e) =>
@@ -236,6 +399,7 @@ export function PortfolioView() {
                     positions: state.positions,
                     loading: false,
                     error: (e as Error).message,
+                    fetchedAt: state.fetchedAt,
                   }),
                 );
             }}
@@ -252,23 +416,68 @@ export function PortfolioView() {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-border bg-surface/20">
+      {totalLoaded > 4 ? (
+        <div className="mb-3">
+          <div className="relative max-w-sm">
+            <Search
+              className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-2"
+              aria-hidden="true"
+            />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Filter positions by market…"
+              aria-label="Filter positions by market"
+              className="w-full rounded-md border border-border-strong bg-surface px-7 py-1.5 text-[12px] text-foreground placeholder:text-muted-2 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/40"
+            />
+            {query ? (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                aria-label="Clear search"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-2 hover:bg-surface-2 hover:text-foreground"
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {filterActive && shownCount === 0 ? (
+        <div className="rounded-md border border-border bg-surface/40 px-6 py-10 text-center">
+          <p className="text-sm text-muted">
+            No positions match your filter.{" "}
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="text-accent hover:underline"
+            >
+              Clear search
+            </button>
+          </p>
+        </div>
+      ) : (
+      <>
+      <MobilePositionList positions={sortedPositions ?? []} />
+      <div className="hidden sm:block overflow-x-auto rounded-md border border-border bg-surface/20">
         <table className="w-full min-w-[1080px] border-separate border-spacing-0 text-sm">
           <thead>
             <tr>
-              <Th>Market</Th>
-              <Th>Side</Th>
-              <Th>Shares</Th>
-              <Th>Avg</Th>
-              <Th>Current</Th>
-              <Th>Value</Th>
-              <Th>P&L</Th>
-              <Th>Closes</Th>
+              <SortableTh sortKey="market" current={sortKey} dir={sortDir} onClick={setSort}>Market</SortableTh>
+              <SortableTh sortKey="side" current={sortKey} dir={sortDir} onClick={setSort}>Side</SortableTh>
+              <SortableTh sortKey="shares" current={sortKey} dir={sortDir} onClick={setSort}>Shares</SortableTh>
+              <SortableTh sortKey="avgPrice" current={sortKey} dir={sortDir} onClick={setSort}>Avg</SortableTh>
+              <SortableTh sortKey="curPrice" current={sortKey} dir={sortDir} onClick={setSort}>Current</SortableTh>
+              <SortableTh sortKey="value" current={sortKey} dir={sortDir} onClick={setSort}>Value</SortableTh>
+              <SortableTh sortKey="pnl" current={sortKey} dir={sortDir} onClick={setSort}>P&amp;L</SortableTh>
+              <SortableTh sortKey="endDate" current={sortKey} dir={sortDir} onClick={setSort}>Closes</SortableTh>
               <Th />
             </tr>
           </thead>
           <tbody>
-            {state.positions.map((p) => {
+            {(sortedPositions ?? []).map((p) => {
               const isYes = p.outcome.toLowerCase() === "yes";
               const pnl = fmtSignedUSD(p.cashPnl);
               return (
@@ -343,9 +552,25 @@ export function PortfolioView() {
                     </div>
                   </Td>
                   <Td>
-                    <span className="tabular text-[12px] text-muted">
-                      {fmtDate(p.endDate)}
-                    </span>
+                    {(() => {
+                      const urgency = urgencyForEnd(p.endDate);
+                      const tone =
+                        urgency === "urgent"
+                          ? "text-rose-300"
+                          : urgency === "soon"
+                            ? "text-amber-300"
+                            : urgency === "ended"
+                              ? "text-muted-2"
+                              : "text-muted";
+                      return (
+                        <span
+                          className={cn("tabular text-[12px]", tone)}
+                          title={p.endDate ?? undefined}
+                        >
+                          {fmtDate(p.endDate)}
+                        </span>
+                      );
+                    })()}
                   </Td>
                   <Td>
                     <a
@@ -364,6 +589,8 @@ export function PortfolioView() {
           </tbody>
         </table>
       </div>
+      </>
+      )}
       <p className="mt-3 text-[11px] text-muted-2">
         Data via{" "}
         <code className="font-mono">data-api.polymarket.com/positions</code>.
@@ -374,39 +601,8 @@ export function PortfolioView() {
   );
 }
 
-function Empty({
-  title,
-  body,
-  icon,
-  tone = "neutral",
-}: {
-  title: string;
-  body: string;
-  icon?: React.ReactNode;
-  tone?: "neutral" | "error";
-}) {
-  return (
-    <div className="mt-8 flex flex-col items-center gap-3 rounded-md border border-border bg-surface/40 px-6 py-12 text-center">
-      <span
-        className={cn(
-          "grid h-10 w-10 place-items-center rounded-full ring-1",
-          tone === "error"
-            ? "bg-rose-500/15 ring-rose-400/30"
-            : "bg-zinc-700/40 ring-zinc-500/40",
-        )}
-      >
-        {icon ??
-          (tone === "error" ? (
-            <AlertCircle className="h-5 w-5 text-rose-300" />
-          ) : (
-            <Wallet className="h-5 w-5 text-muted" />
-          ))}
-      </span>
-      <h2 className="text-base font-semibold">{title}</h2>
-      <p className="max-w-md text-sm text-muted">{body}</p>
-    </div>
-  );
-}
+// Th, Td, SortableTh now live in components/ui/DataTable.tsx.
+// EmptyState and LoadingState in components/ui/.
 
 function Stat({
   label,
@@ -437,24 +633,5 @@ function Stat({
         <span className="tabular text-[10px] text-muted-2">{hint}</span>
       ) : null}
     </div>
-  );
-}
-
-function Th({ children }: { children?: React.ReactNode }) {
-  return (
-    <th
-      scope="col"
-      className="border-b border-border bg-surface/40 px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted"
-    >
-      {children}
-    </th>
-  );
-}
-
-function Td({ children }: { children: React.ReactNode }) {
-  return (
-    <td className="border-b border-border/70 px-3 py-2 align-middle">
-      {children}
-    </td>
   );
 }

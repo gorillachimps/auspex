@@ -8,26 +8,29 @@ import { useClobSession } from "@/lib/useClobSession";
 import { useEnsureClientOnMount } from "@/lib/useEnsureClientOnMount";
 import { useMarketLookup } from "@/lib/useMarketLookup";
 import { cn } from "@/lib/cn";
+import {
+  fmtAgoUnix,
+  fmtPrice as fmtPriceN,
+  fmtUSD as fmtUSDCanonical,
+} from "@/lib/format";
+import { EmptyState } from "./ui/EmptyState";
+import { LoadingState } from "./ui/LoadingState";
+import { Td as PrimitiveTd, Th as PrimitiveTh } from "./ui/DataTable";
 
 const REFRESH_MS = 20_000;
 
-function fmtPrice(p: string) {
+// Local wrappers preserve the string-input call-site convention of this
+// file (OpenOrder fields are decimal strings from the SDK) while the
+// canonical formatters live in lib/format.ts.
+const fmtPrice = (p: string) => {
   const n = parseFloat(p);
-  return isFinite(n) ? `$${n.toFixed(3)}` : p;
-}
-
-function fmtShares(p: string) {
+  return isFinite(n) ? fmtPriceN(n) : p;
+};
+const fmtShares = (p: string) => {
   const n = parseFloat(p);
   return isFinite(n) ? n.toFixed(2) : p;
-}
-
-function fmtAge(unix: number) {
-  const ms = Date.now() - unix * 1000;
-  if (ms < 60_000) return `${Math.floor(ms / 1000)}s`;
-  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m`;
-  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h`;
-  return `${Math.floor(ms / 86_400_000)}d`;
-}
+};
+const fmtAge = fmtAgoUnix;
 
 export function OrdersView() {
   const session = useClobSession();
@@ -160,54 +163,82 @@ export function OrdersView() {
 
   if (session.status === "disabled") {
     return (
-      <Empty
-        title="Trading not configured"
-        body="Set NEXT_PUBLIC_PRIVY_APP_ID in .env.local to enable trading."
-      />
+      <div className="mt-8">
+        <EmptyState
+          title="Trading isn't enabled on this deploy"
+          body="The screener still works — head back to the home page to browse markets."
+        />
+      </div>
     );
   }
   if (session.status === "loading") {
-    return <Empty title="Loading…" body="Privy is initialising." />;
+    return (
+      <div className="mt-8">
+        <LoadingState
+          variant="panel"
+          title="Connecting…"
+          body="Setting up the wallet connection."
+        />
+      </div>
+    );
   }
   if (session.status === "unconnected") {
     return (
-      <Empty
-        title="Wallet not connected"
-        body="Connect a wallet from the top-right to view your open orders."
-      />
+      <div className="mt-8">
+        <EmptyState
+          title="Connect your wallet to see open orders"
+          body="Use the Connect button in the top-right."
+        />
+      </div>
     );
   }
   if (session.status === "no-funder") {
     return (
-      <Empty
-        title="Deposit wallet missing"
-        body="Set your deposit-wallet address from the Connect menu."
-      />
+      <div className="mt-8">
+        <EmptyState
+          title="One more step — set your deposit wallet"
+          body="Open the Connect menu in the top-right."
+        />
+      </div>
     );
   }
   if (session.status === "error") {
     return (
-      <Empty title="Auth error" body={session.error ?? "Unknown error"} tone="error" />
+      <div className="mt-8">
+        <EmptyState
+          title="Couldn't sign you in"
+          body={session.error ?? "Unknown error"}
+          tone="error"
+        />
+      </div>
     );
   }
   if (loading && !orders) {
     return (
-      <Empty
-        title="Fetching open orders…"
-        body="One moment."
-        icon={<Loader2 className="h-5 w-5 animate-spin text-accent" />}
-      />
+      <div className="mt-8">
+        <LoadingState
+          variant="panel"
+          title="Pulling your open orders…"
+          body="Fetching from Polymarket."
+        />
+      </div>
     );
   }
   if (error) {
-    return <Empty title="Couldn't fetch orders" body={error} tone="error" />;
+    return (
+      <div className="mt-8">
+        <EmptyState title="Couldn't load your orders" body={error} tone="error" />
+      </div>
+    );
   }
   if (!orders || orders.length === 0) {
     return (
-      <Empty
-        title="No open orders"
-        body="Place a Yes / No order from the screener and it will show up here."
-      />
+      <div className="mt-8">
+        <EmptyState
+          title="No open orders"
+          body="Place a YES or NO order from the screener and it'll show up here until it fills or you cancel it."
+        />
+      </div>
     );
   }
 
@@ -373,14 +404,7 @@ export function OrdersView() {
   );
 }
 
-function fmtNotional(n: number): string {
-  if (!isFinite(n)) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(n);
-}
+const fmtNotional = fmtUSDCanonical;
 
 function Stat({
   label,
@@ -414,53 +438,6 @@ function Stat({
   );
 }
 
-function Empty({
-  title,
-  body,
-  icon,
-  tone = "neutral",
-}: {
-  title: string;
-  body: string;
-  icon?: React.ReactNode;
-  tone?: "neutral" | "error";
-}) {
-  return (
-    <div className="mt-8 flex flex-col items-center gap-3 rounded-md border border-border bg-surface/40 px-6 py-12 text-center">
-      <span
-        className={cn(
-          "grid h-10 w-10 place-items-center rounded-full ring-1",
-          tone === "error"
-            ? "bg-rose-500/15 ring-rose-400/30"
-            : "bg-zinc-700/40 ring-zinc-500/40",
-        )}
-      >
-        {icon ?? (
-          <AlertCircle
-            className={cn(
-              "h-5 w-5",
-              tone === "error" ? "text-rose-300" : "text-muted",
-            )}
-          />
-        )}
-      </span>
-      <h2 className="text-base font-semibold">{title}</h2>
-      <p className="max-w-md text-sm text-muted">{body}</p>
-    </div>
-  );
-}
-
-function Th({ children }: { children?: React.ReactNode }) {
-  return (
-    <th
-      scope="col"
-      className="border-b border-border bg-surface/40 px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted"
-    >
-      {children}
-    </th>
-  );
-}
-
-function Td({ children }: { children: React.ReactNode }) {
-  return <td className="border-b border-border/70 px-3 py-2 align-middle">{children}</td>;
-}
+// Local Empty/Th/Td removed — using primitives from components/ui/.
+const Th = PrimitiveTh;
+const Td = PrimitiveTd;

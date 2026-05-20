@@ -68,7 +68,7 @@ export default function WalletDetailPage({ params }: Props) {
               <h1 className="font-mono text-xl font-semibold tracking-tight">
                 {shortAddress(proxy, 10, 8)}
               </h1>
-              <div className="mt-1 flex items-center gap-2">
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <button
                   type="button"
                   onClick={copy}
@@ -102,7 +102,7 @@ export default function WalletDetailPage({ params }: Props) {
           </div>
 
           {/* P&L summary tiles */}
-          <section className="mt-6 grid gap-3 sm:grid-cols-4">
+          <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat
               label="30d realized"
               value={loading ? "…" : fmtSignedUSD(pnl?.realized30d ?? 0)}

@@ -8,7 +8,11 @@ import { useLiveMid } from "@/lib/useLiveMarket";
 import { useUserMarketPositions, type Position } from "@/lib/useUserPositions";
 import { cn } from "@/lib/cn";
 import type { TableRow } from "@/lib/types";
+import { fmtPctSigned, fmtPrice, fmtUSD, fmtUSDSignedText } from "@/lib/format";
 import { OrderTicket } from "./OrderTicket";
+
+const fmtSignedUSD = fmtUSDSignedText;
+const fmtSignedPct = fmtPctSigned;
 
 const REFRESH_MS = 30_000;
 
@@ -24,32 +28,6 @@ function rawToShares(raw: string): number {
   } catch {
     return 0;
   }
-}
-
-function fmtUSD(n: number): string {
-  if (!isFinite(n)) return "—";
-  if (Math.abs(n) < 0.01) return "$0.00";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(n);
-}
-
-function fmtSignedUSD(n: number): string {
-  if (!isFinite(n) || Math.abs(n) < 0.005) return "$0.00";
-  const sign = n > 0 ? "+" : "−";
-  return `${sign}${fmtUSD(Math.abs(n))}`;
-}
-
-function fmtSignedPct(n: number): string {
-  if (!isFinite(n) || Math.abs(n) < 0.05) return "—";
-  return `${n > 0 ? "+" : ""}${n.toFixed(1)}%`;
-}
-
-function fmtPrice(n: number): string {
-  if (!isFinite(n)) return "—";
-  return `$${n.toFixed(3)}`;
 }
 
 export function PositionCard({ market }: { market: TableRow }) {

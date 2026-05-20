@@ -3,11 +3,26 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { SortingState } from "@tanstack/react-table";
-import { Check, Copy, Link2, Star, X } from "lucide-react";
+import {
+  ArrowRight,
+  Bookmark,
+  Check,
+  Copy,
+  Link2,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { MarketTable } from "./MarketTable";
 import { useStarred } from "@/lib/useStarred";
+import {
+  describeSavedFilter,
+  toScreenerUrl,
+  useSavedFilters,
+} from "@/lib/useSavedFilters";
 import type { TableRow } from "@/lib/types";
+import { EmptyState } from "./ui/EmptyState";
 
 type Props = { rows: TableRow[] };
 
@@ -27,6 +42,7 @@ function parseShareIds(raw: string | null): string[] {
 
 export function WatchlistsView({ rows }: Props) {
   const { starred, mergeStarred } = useStarred();
+  const { items: savedViews, remove: removeView } = useSavedFilters();
   const searchParams = useSearchParams();
   const [sorting, setSorting] = useState<SortingState>([
     { id: "volume24h", desc: true },
@@ -162,27 +178,97 @@ export function WatchlistsView({ rows }: Props) {
     </div>
   ) : null;
 
-  if (starred.size === 0) {
+  const savedViewsBlock =
+    savedViews.length > 0 ? (
+      <section className="mt-6">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-2">
+            Saved views · {savedViews.length}
+          </h2>
+          <a
+            href="/"
+            className="text-[11px] text-muted hover:text-foreground"
+          >
+            Add another from the screener →
+          </a>
+        </div>
+        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {savedViews.map((v) => (
+            <li
+              key={v.id}
+              className="group rounded-md border border-border bg-surface/40 p-3 transition-colors hover:bg-surface-2/40"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <a
+                  href={toScreenerUrl(v)}
+                  className="min-w-0 flex-1"
+                  title="Open this view in the screener"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Bookmark className="h-3 w-3 shrink-0 text-accent" aria-hidden="true" />
+                    <span className="truncate text-[13px] font-medium text-foreground group-hover:text-accent">
+                      {v.name}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-muted">
+                    {describeSavedFilter(v)}
+                  </div>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Delete saved view "${v.name}"? This can't be undone.`,
+                      )
+                    ) {
+                      removeView(v.id);
+                    }
+                  }}
+                  aria-label={`Delete saved view ${v.name}`}
+                  className="shrink-0 rounded p-1 text-muted-2 hover:bg-rose-500/15 hover:text-rose-300 opacity-0 group-hover:opacity-100"
+                >
+                  <Trash2 className="h-3 w-3" aria-hidden="true" />
+                </button>
+              </div>
+              <a
+                href={toScreenerUrl(v)}
+                className="mt-2 inline-flex items-center gap-1 text-[10px] font-medium text-accent hover:underline"
+              >
+                Open
+                <ArrowRight className="h-3 w-3" aria-hidden="true" />
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ) : null;
+
+  if (starred.size === 0 && savedViews.length === 0) {
     return (
       <>
         {importBanner}
-        <div className="mt-8 rounded-md border border-border bg-surface/40 px-6 py-12 text-center">
-          <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-amber-500/15 ring-1 ring-amber-400/30">
-            <Star className="h-5 w-5 text-amber-300" />
-          </div>
-          <h2 className="mt-4 text-base font-semibold">No starred markets yet</h2>
-          <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-            Click the{" "}
-            <Star className="inline h-3 w-3 align-text-top text-muted-2" /> on
-            any market in the screener to pin it here. Watchlists live in your
-            browser — there&apos;s no account required.
-          </p>
-          <a
-            href="/"
-            className="mt-4 inline-block rounded-md border border-border-strong bg-surface px-3 py-1.5 text-[13px] font-medium text-foreground hover:bg-surface-2"
-          >
-            Browse the screener
-          </a>
+        <div className="mt-8">
+          <EmptyState
+            icon={<Star className="h-5 w-5 text-amber-300" aria-hidden="true" />}
+            title="No starred markets yet"
+            body={
+              <>
+                Click the{" "}
+                <Star className="inline h-3 w-3 align-text-top text-muted-2" />{" "}
+                on any market in the screener to pin it here. Watchlists live
+                in your browser — there&apos;s no account required.
+              </>
+            }
+            cta={
+              <a
+                href="/"
+                className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-[13px] font-medium text-foreground hover:bg-surface-2"
+              >
+                Browse the screener
+              </a>
+            }
+          />
         </div>
       </>
     );
@@ -192,18 +278,24 @@ export function WatchlistsView({ rows }: Props) {
     return (
       <>
         {importBanner}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <span className="text-[12px] text-muted-2">
-            {starred.size.toLocaleString()} starred
-          </span>
-          {shareCta}
-        </div>
-        <div className="mt-4 rounded-md border border-border bg-surface/40 px-6 py-12 text-center">
-          <p className="text-sm text-muted">
-            You have {starred.size.toLocaleString()} starred markets, but none
-            of them are in the current top-500 server snapshot.
-          </p>
-        </div>
+        {savedViewsBlock}
+        {starred.size > 0 ? (
+          <>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <span className="text-[12px] text-muted-2">
+                {starred.size.toLocaleString()} starred
+              </span>
+              {shareCta}
+            </div>
+            <div className="mt-4">
+              <EmptyState
+                compact
+                title="None of your starred markets are in the current snapshot"
+                body={`You have ${starred.size.toLocaleString()} starred markets, but none of them are in the current top-500 server snapshot. They may have closed or dropped in volume — check Polymarket directly to confirm.`}
+              />
+            </div>
+          </>
+        ) : null}
       </>
     );
   }
@@ -211,11 +303,15 @@ export function WatchlistsView({ rows }: Props) {
   return (
     <>
       {importBanner}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <span className="text-[12px] text-muted-2">
-          {watch.length} shown · {starred.size.toLocaleString()} starred
-        </span>
+      {savedViewsBlock}
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-2">
+          Starred markets · {starred.size.toLocaleString()}
+        </h2>
         {shareCta}
+      </div>
+      <div className="mt-2 text-[11px] text-muted-2">
+        {watch.length} shown · {starred.size.toLocaleString()} starred
       </div>
       <MarketTable rows={watch} sorting={sorting} onSortingChange={setSorting} />
     </>

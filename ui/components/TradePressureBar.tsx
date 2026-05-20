@@ -2,6 +2,9 @@
 
 import { cn } from "@/lib/cn";
 import { useTradePressure } from "@/lib/useLiveMarket";
+import { fmtUSDCompact } from "@/lib/format";
+
+const fmtUSD = fmtUSDCompact;
 
 const WINDOW_MIN = 5;
 const WINDOW_MS = WINDOW_MIN * 60 * 1000;
@@ -111,9 +114,3 @@ export function TradePressureBar({ tokenYes }: Props) {
   );
 }
 
-function fmtUSD(n: number): string {
-  if (!isFinite(n) || Math.abs(n) < 0.5) return "$0";
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}k`;
-  return `$${n.toFixed(0)}`;
-}

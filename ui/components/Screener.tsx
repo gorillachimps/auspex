@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryState, parseAsString, parseAsStringLiteral } from "nuqs";
 import type { SortingState } from "@tanstack/react-table";
-import { Activity, X } from "lucide-react";
+import { Activity, BookmarkPlus, X } from "lucide-react";
+import { toast } from "sonner";
 import { SubtypeFilter } from "./SubtypeFilter";
 import { MarketTable } from "./MarketTable";
 import { SearchBar } from "./SearchBar";
@@ -13,6 +14,7 @@ import { OrderTicket } from "./OrderTicket";
 import { SUBTYPE_CHIPS } from "@/lib/families";
 import { useStarred } from "@/lib/useStarred";
 import { useLiveMidMap } from "@/lib/useLiveMarket";
+import { useSavedFilters } from "@/lib/useSavedFilters";
 import type { Family, TableRow } from "@/lib/types";
 
 // Maximum number of YES tokens to live-subscribe to via the Polymarket WS.
@@ -175,6 +177,35 @@ export function Screener({ rows }: Props) {
     return () => window.removeEventListener("auspex:open-ticket", onOpen);
   }, [rowsWithLive]);
 
+  const { save: saveFilter } = useSavedFilters();
+
+  function onSaveView() {
+    const suggested = [
+      active !== "all" ? active : null,
+      ticker || null,
+      search.trim() ? `"${search.trim()}"` : null,
+      isStarredOn ? "starred" : null,
+      isLiveOn ? "live" : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const name = window.prompt(
+      "Name this view:",
+      suggested || "Custom view",
+    );
+    if (!name || !name.trim()) return;
+    saveFilter({
+      name: name.trim(),
+      subtype: active === "all" ? null : active,
+      ticker: ticker || null,
+      search: search.trim() || null,
+      starred: isStarredOn,
+      live: isLiveOn,
+      sort: sortParam === DEFAULT_SORT ? null : sortParam,
+    });
+    toast.success(`Saved "${name.trim()}" to your watchlists.`);
+  }
+
   const resetAll = useCallback(() => {
     setActive(null, { shallow: true });
     setTicker(null, { shallow: true });
@@ -194,14 +225,25 @@ export function Screener({ rows }: Props) {
               onChange={(v) => setSearch(v ? v : null, { shallow: true })}
             />
             {filtersActive ? (
-              <button
-                type="button"
-                onClick={resetAll}
-                className="inline-flex items-center gap-1 rounded-full bg-zinc-800/60 px-2 py-1 text-[11px] font-medium text-muted ring-1 ring-border hover:text-foreground"
-              >
-                <X className="h-3 w-3" />
-                Clear filters
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={resetAll}
+                  className="inline-flex items-center gap-1 rounded-full bg-zinc-800/60 px-2 py-1 text-[11px] font-medium text-muted ring-1 ring-border hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                  Clear filters
+                </button>
+                <button
+                  type="button"
+                  onClick={onSaveView}
+                  className="inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-1 text-[11px] font-medium text-accent ring-1 ring-accent/40 hover:bg-accent/25"
+                  title="Save the current filter combination as a named view in /watchlists"
+                >
+                  <BookmarkPlus className="h-3 w-3" />
+                  Save view
+                </button>
+              </>
             ) : null}
             <div className="ml-auto flex items-center gap-2">
               <button

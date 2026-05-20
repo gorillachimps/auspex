@@ -4,6 +4,10 @@ import { useMemo } from "react";
 import { cn } from "@/lib/cn";
 import { useWhaleFeed, type TokenInfo, type WhaleTrade } from "@/lib/useLiveMarket";
 import type { TableRow } from "@/lib/types";
+import { fmtAgoUnixMs, fmtUSDCompact } from "@/lib/format";
+
+const fmtCompactUSD = fmtUSDCompact;
+const fmtAge = fmtAgoUnixMs;
 
 const THRESHOLD_USD = 100;
 const MAX_ITEMS = 20;
@@ -134,17 +138,3 @@ function WhaleRow({ trade }: { trade: WhaleTrade }) {
   );
 }
 
-function fmtCompactUSD(n: number): string {
-  if (!isFinite(n)) return "—";
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}k`;
-  return `$${n.toFixed(0)}`;
-}
-
-function fmtAge(unixMs: number): string {
-  const ms = Date.now() - unixMs;
-  if (ms < 60_000) return `${Math.max(0, Math.floor(ms / 1_000))}s`;
-  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m`;
-  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h`;
-  return `${Math.floor(ms / 86_400_000)}d`;
-}

@@ -9,6 +9,10 @@ import {
 import type { FollowedWallet } from "@/lib/useFollowedWallets";
 import { shortAddress } from "@/lib/resolveWallet";
 import { cn } from "@/lib/cn";
+import { fmtAgoUnix, fmtUSDCompact } from "@/lib/format";
+
+const fmtCompactUSD = fmtUSDCompact;
+const fmtRelative = fmtAgoUnix;
 
 type Props = {
   followed: FollowedWallet[];
@@ -149,21 +153,3 @@ function Row({ trade, label }: { trade: ActivityTrade; label: string }) {
   );
 }
 
-function fmtCompactUSD(n: number): string {
-  if (!isFinite(n)) return "—";
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}k`;
-  return `$${n.toFixed(0)}`;
-}
-
-function fmtRelative(unixSec: number): string {
-  const diffSec = Math.floor(Date.now() / 1000) - unixSec;
-  if (diffSec < 60) return `${diffSec}s`;
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m`;
-  if (diffSec < 86_400) return `${Math.floor(diffSec / 3600)}h`;
-  if (diffSec < 30 * 86_400) return `${Math.floor(diffSec / 86_400)}d`;
-  return new Date(unixSec * 1000).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-}

@@ -13,6 +13,10 @@ export function Footer() {
           Status: <span className="text-foreground">Operational</span>
         </span>
         <span className="text-border-strong" aria-hidden="true">·</span>
+        <a href="/welcome" className="hover:text-foreground">
+          New here?
+        </a>
+        <span className="text-border-strong" aria-hidden="true">·</span>
         <a href="/changelog" className="hover:text-foreground">
           Changelog v0.3
         </a>
@@ -44,6 +48,15 @@ export function Footer() {
         <span className="ml-auto flex items-center gap-3">
           <a href="/api" className="hover:text-foreground">
             API
+          </a>
+          <a href="/privacy" className="hover:text-foreground">
+            Privacy
+          </a>
+          <a href="/security" className="hover:text-foreground">
+            Security
+          </a>
+          <a href="/terms" className="hover:text-foreground">
+            Terms
           </a>
         </span>
       </div>

@@ -32,7 +32,7 @@ function ConnectButtonDisabled() {
   return (
     <span
       className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-[13px] font-medium text-muted-2 opacity-60"
-      title="Set NEXT_PUBLIC_PRIVY_APP_ID in .env.local to enable trading"
+      title="Wallet connect isn't enabled on this deploy"
     >
       Sign in
     </span>

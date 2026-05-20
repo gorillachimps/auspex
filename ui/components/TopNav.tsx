@@ -1,6 +1,9 @@
 import { ConnectButton } from "./ConnectButton";
 import { HowItWorks } from "./HowItWorks";
+import { NotificationsInbox } from "./NotificationsInbox";
 import { NotificationsToggle } from "./NotificationsToggle";
+import { ShortcutsHelpButton } from "./ShortcutsHelpButton";
+import { WatchlistTabBadge } from "./WatchlistTabBadge";
 
 type ActiveTab =
   | "screener"
@@ -69,12 +72,15 @@ export function TopNav({ active = "screener" }: Props) {
                 }`}
               >
                 {t.label}
+                {t.id === "watchlists" ? <WatchlistTabBadge /> : null}
               </a>
             );
           })}
         </nav>
         <div className="ml-auto flex shrink-0 items-center gap-2 text-xs">
           <HowItWorks />
+          <ShortcutsHelpButton />
+          <NotificationsInbox />
           <NotificationsToggle />
           <span className="hidden items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-1 font-medium text-emerald-300 ring-1 ring-emerald-400/30 lg:inline-flex">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />

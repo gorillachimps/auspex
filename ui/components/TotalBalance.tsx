@@ -7,6 +7,10 @@ import { useBalanceAllowance } from "@/lib/useBalanceAllowance";
 import { useEnsureClientOnMount } from "@/lib/useEnsureClientOnMount";
 import { useUserPositions } from "@/lib/useUserPositions";
 import { cn } from "@/lib/cn";
+import { fmtPctSigned, fmtUSD, fmtUSDSignedText } from "@/lib/format";
+
+const fmtSignedUSD = fmtUSDSignedText;
+const fmtSignedPct = fmtPctSigned;
 
 /**
  * Headline total-balance widget for /portfolio. Aggregates:
@@ -189,22 +193,3 @@ function Tile({
   );
 }
 
-function fmtUSD(n: number): string {
-  if (!isFinite(n) || Math.abs(n) < 0.005) return "$0.00";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : 2,
-  }).format(n);
-}
-
-function fmtSignedUSD(n: number): string {
-  if (!isFinite(n) || Math.abs(n) < 0.005) return "$0.00";
-  const sign = n > 0 ? "+" : "−";
-  return `${sign}${fmtUSD(Math.abs(n))}`;
-}
-
-function fmtSignedPct(n: number): string {
-  if (!isFinite(n) || Math.abs(n) < 0.05) return "—";
-  return `${n > 0 ? "+" : ""}${n.toFixed(1)}%`;
-}

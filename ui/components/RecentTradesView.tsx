@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import { polymarketMarketWs } from "@/lib/polymarketWs";
+import { fmtAgoUnixMs, fmtShares } from "@/lib/format";
+
+const fmtAge = fmtAgoUnixMs;
+const fmtSize = fmtShares;
 
 const MAX_ITEMS = 20;
 
@@ -152,18 +156,3 @@ export function RecentTradesView({ tokenYes, tokenNo }: Props) {
   );
 }
 
-function fmtAge(unixMs: number): string {
-  const ms = Date.now() - unixMs;
-  if (ms < 60_000) return `${Math.max(0, Math.floor(ms / 1000))}s`;
-  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m`;
-  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h`;
-  return `${Math.floor(ms / 86_400_000)}d`;
-}
-
-function fmtSize(n: number): string {
-  if (!isFinite(n)) return "—";
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  if (n >= 100) return n.toFixed(0);
-  return n.toFixed(2);
-}

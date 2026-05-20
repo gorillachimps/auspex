@@ -10,6 +10,9 @@ import { useState } from "react";
 import { isPrivyConfigured, PRIVY_APP_ID } from "@/lib/env-client";
 import { wagmiConfig } from "@/lib/wagmi";
 import { ClobSessionProvider } from "@/lib/useClobSession";
+import { TabTitleBadge } from "@/components/TabTitleBadge";
+import { SettlementNotifications } from "@/components/SettlementNotifications";
+import { FirstVisitTour } from "@/components/FirstVisitTour";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -20,7 +23,12 @@ export function Providers({ children }: { children: ReactNode }) {
   if (!isPrivyConfigured) {
     return (
       <QueryClientProvider client={queryClient}>
-        <ClobSessionProvider>{children}</ClobSessionProvider>
+        <ClobSessionProvider>
+          <TabTitleBadge />
+          <SettlementNotifications />
+          <FirstVisitTour />
+          {children}
+        </ClobSessionProvider>
         <Toaster theme="dark" position="bottom-right" richColors />
       </QueryClientProvider>
     );
@@ -42,7 +50,10 @@ export function Providers({ children }: { children: ReactNode }) {
     >
       <QueryClientProvider client={queryClient}>
         <WagmiProvider config={wagmiConfig}>
-          <ClobSessionProvider>{children}</ClobSessionProvider>
+          <ClobSessionProvider>
+            <TabTitleBadge />
+            {children}
+          </ClobSessionProvider>
           <Toaster theme="dark" position="bottom-right" richColors />
         </WagmiProvider>
       </QueryClientProvider>

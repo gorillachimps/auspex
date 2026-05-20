@@ -13,6 +13,33 @@
   --accent-strong: #8b5cf6;
   --positive: #34d399;
   --negative: #f87171;
+
+  /* Semantic tone palette. Each tone has three roles:
+   *   -strong  saturated foreground (e.g. used for active text)
+   *   -medium  default foreground (e.g. used for icons + light text)
+   *   -halo    low-opacity background fill / ring (e.g. for chips, badges)
+   * These map to emerald (positive), rose (negative), amber (warning),
+   * sky (info). Use as `text-pos-strong`, `bg-pos-halo`, etc.
+   */
+  --pos-strong: #6ee7b7;
+  --pos-medium: #34d399;
+  --pos-halo: rgba(16, 185, 129, 0.15);
+  --pos-halo-ring: rgba(16, 185, 129, 0.3);
+
+  --neg-strong: #fda4af;
+  --neg-medium: #f87171;
+  --neg-halo: rgba(244, 63, 94, 0.15);
+  --neg-halo-ring: rgba(244, 63, 94, 0.3);
+
+  --warn-strong: #fcd34d;
+  --warn-medium: #fbbf24;
+  --warn-halo: rgba(245, 158, 11, 0.15);
+  --warn-halo-ring: rgba(245, 158, 11, 0.3);
+
+  --info-strong: #93c5fd;
+  --info-medium: #60a5fa;
+  --info-halo: rgba(56, 189, 248, 0.15);
+  --info-halo-ring: rgba(56, 189, 248, 0.3);
 }
 
 @theme inline {
@@ -28,6 +55,27 @@
   --color-accent-strong: var(--accent-strong);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
+
+  --color-pos-strong: var(--pos-strong);
+  --color-pos-medium: var(--pos-medium);
+  --color-pos-halo: var(--pos-halo);
+  --color-pos-halo-ring: var(--pos-halo-ring);
+
+  --color-neg-strong: var(--neg-strong);
+  --color-neg-medium: var(--neg-medium);
+  --color-neg-halo: var(--neg-halo);
+  --color-neg-halo-ring: var(--neg-halo-ring);
+
+  --color-warn-strong: var(--warn-strong);
+  --color-warn-medium: var(--warn-medium);
+  --color-warn-halo: var(--warn-halo);
+  --color-warn-halo-ring: var(--warn-halo-ring);
+
+  --color-info-strong: var(--info-strong);
+  --color-info-medium: var(--info-medium);
+  --color-info-halo: var(--info-halo);
+  --color-info-halo-ring: var(--info-halo-ring);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

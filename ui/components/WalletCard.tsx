@@ -8,7 +8,11 @@ import { computeWalletPnl } from "@/lib/walletPnl";
 import { shortAddress } from "@/lib/resolveWallet";
 import type { FollowedWallet } from "@/lib/useFollowedWallets";
 import { cn } from "@/lib/cn";
+import { fmtAgoISO, fmtUSDSignedText } from "@/lib/format";
 import { FollowButton } from "./FollowButton";
+
+const fmtSignedUSD = fmtUSDSignedText;
+const fmtRelativeISO = fmtAgoISO;
 
 type Props = {
   wallet: FollowedWallet;
@@ -129,24 +133,3 @@ function signTone(n: number): "pos" | "neg" | "neutral" {
   return "neutral";
 }
 
-function fmtSignedUSD(n: number): string {
-  if (!isFinite(n) || Math.abs(n) < 0.005) return "$0.00";
-  const abs = Math.abs(n);
-  const sign = n > 0 ? "+" : "−";
-  if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(1)}k`;
-  return `${sign}$${abs.toFixed(2)}`;
-}
-
-function fmtRelativeISO(iso: string): string {
-  const ts = Date.parse(iso);
-  if (!isFinite(ts)) return "—";
-  const diffSec = Math.floor((Date.now() - ts) / 1000);
-  if (diffSec < 60) return "just now";
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
-  if (diffSec < 86_400) return `${Math.floor(diffSec / 3600)}h ago`;
-  if (diffSec < 30 * 86_400) return `${Math.floor(diffSec / 86_400)}d ago`;
-  return new Date(ts).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-}

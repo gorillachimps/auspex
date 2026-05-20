@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useClobSession } from "./useClobSession";
+import { addNotification } from "./useNotifications";
 
 const POLL_MS = 30_000;
 const HOST = "https://data-api.polymarket.com";
@@ -160,6 +161,18 @@ export function useFillNotifications() {
           const title = `${sideLabel} ${outcomeLabel} @ $${price}`;
           const body = `${t.title ?? "Polymarket fill"} · $${usdc.toFixed(2)} filled`;
           const targetUrl = t.slug ? `/markets/${t.slug}` : "/activity";
+
+          // Record in the in-app inbox so users can scroll back through
+          // recent fills from the bell dropdown, even if they dismissed
+          // the OS toast.
+          addNotification({
+            id,
+            kind: "fill",
+            title,
+            body,
+            url: targetUrl,
+            ts: (t.timestamp ?? Math.floor(Date.now() / 1000)) * 1000,
+          });
 
           // Prefer the service worker — required for iOS Safari, survives
           // page reloads, and gives us the click handler defined in sw.js

@@ -5,6 +5,12 @@ import { Loader2, RefreshCw, ExternalLink } from "lucide-react";
 import { BUILDER_CODE, CLOB_HOST } from "@/lib/polymarket";
 import { useMarketLookup } from "@/lib/useMarketLookup";
 import { cn } from "@/lib/cn";
+import { fmtAgoUnix, fmtUSD, fmtUSDCompact } from "@/lib/format";
+import { EmptyState } from "./ui/EmptyState";
+import { LoadingState } from "./ui/LoadingState";
+
+const fmtCompactUSD = fmtUSDCompact;
+const fmtAge = fmtAgoUnix;
 
 const REFRESH_MS = 60_000;
 
@@ -42,34 +48,6 @@ const ZERO: StatsState = {
   error: null,
   fetchedAt: null,
 };
-
-function fmtUSD(n: number): string {
-  if (!isFinite(n)) return "—";
-  if (Math.abs(n) < 0.01) return "$0.00";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: n >= 1000 ? 0 : 2,
-  }).format(n);
-}
-
-function fmtCompactUSD(n: number): string {
-  if (!isFinite(n)) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(n);
-}
-
-function fmtAge(unix: number): string {
-  const ms = Date.now() - unix * 1000;
-  if (ms < 60_000) return `${Math.max(0, Math.floor(ms / 1000))}s`;
-  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m`;
-  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h`;
-  return `${Math.floor(ms / 86_400_000)}d`;
-}
 
 export function BuilderStatsView() {
   const [state, setState] = useState<StatsState>(ZERO);
@@ -152,34 +130,41 @@ export function BuilderStatsView() {
 
   if (state.trades == null && state.loading) {
     return (
-      <div className="mt-8 flex flex-col items-center gap-3 rounded-md border border-border bg-surface/40 px-6 py-12 text-center">
-        <Loader2 className="h-5 w-5 animate-spin text-accent" />
-        <p className="text-sm text-muted">Loading builder trades…</p>
+      <div className="mt-8">
+        <LoadingState
+          variant="panel"
+          title="Loading builder trades…"
+          body="Pulling attributed fills from the Polymarket CLOB."
+        />
       </div>
     );
   }
   if (state.error) {
     return (
-      <div className="mt-8 rounded-md border border-rose-400/30 bg-rose-500/10 px-4 py-6 text-center text-sm text-rose-200">
-        Couldn&apos;t reach the CLOB builder endpoint: {state.error}
+      <div className="mt-8">
+        <EmptyState
+          title="Couldn't reach the CLOB"
+          body={`The builder-trades endpoint returned an error: ${state.error}`}
+          tone="error"
+        />
       </div>
     );
   }
   if (!state.trades || state.trades.length === 0) {
     return (
-      <div className="mt-8 rounded-md border border-border bg-surface/40 px-6 py-12 text-center">
-        <h2 className="text-base font-semibold">No builder-attributed trades yet</h2>
-        <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-          As soon as anyone places an order through this site with the Auspex
-          builder code attached, attributed fills will show up here. Until then,
-          this view is empty — that&apos;s the expected state at launch.
-        </p>
-        <p className="mt-3 text-[11px] text-muted-2">
-          Endpoint:{" "}
-          <code className="font-mono">
-            {CLOB_HOST}/builder/trades?builder_code={BUILDER_CODE.slice(0, 10)}…
-          </code>
-        </p>
+      <div className="mt-8">
+        <EmptyState
+          title="No builder-attributed trades yet"
+          body="When someone places an order through this site with the Auspex builder code attached, attributed fills show up here. Empty at launch is the expected state."
+        >
+          <p className="text-[11px] text-muted-2">
+            Endpoint:{" "}
+            <code className="font-mono">
+              {CLOB_HOST}/builder/trades?builder_code=
+              {BUILDER_CODE.slice(0, 10)}…
+            </code>
+          </p>
+        </EmptyState>
       </div>
     );
   }

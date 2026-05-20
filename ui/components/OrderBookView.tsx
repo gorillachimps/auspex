@@ -7,6 +7,9 @@ import {
   useLiveBook,
   useWsStatus,
 } from "@/lib/useLiveMarket";
+import { fmtShares } from "@/lib/format";
+
+const fmtSize = fmtShares;
 
 const DEPTH = 8;
 
@@ -263,10 +266,3 @@ function LivePip({ status }: { status: "idle" | "connecting" | "open" | "reconne
   );
 }
 
-function fmtSize(n: number): string {
-  if (!isFinite(n)) return "—";
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  if (n >= 100) return n.toFixed(0);
-  return n.toFixed(2);
-}

@@ -7,6 +7,7 @@ import { DeltaBar } from "@/components/DeltaBar";
 import { RcBar } from "@/components/RcBar";
 import { PositionCard } from "@/components/PositionCard";
 import { OrderBookView } from "@/components/OrderBookView";
+import { DepthChart } from "@/components/DepthChart";
 import { LivePmImpliedStat } from "@/components/LivePmImpliedStat";
 import { TradePressureBar } from "@/components/TradePressureBar";
 import { PriceHistoryChart } from "@/components/PriceHistoryChart";
@@ -90,11 +91,11 @@ export default async function MarketDetailPage({ params }: Props) {
               url={`${process.env.NEXT_PUBLIC_SITE_URL ?? "https://auspex.to"}/markets/${row.slug}`}
             />
           </div>
-          <h1 className="mt-2 text-2xl font-semibold leading-tight tracking-tight">
+          <h1 className="mt-2 text-xl font-semibold leading-tight tracking-tight sm:text-2xl">
             {row.question}
           </h1>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-4">
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <LivePmImpliedStat
               tokenYes={row.tokenYes ?? null}
               bestBid={row.bestBid ?? null}
@@ -177,7 +178,14 @@ export default async function MarketDetailPage({ params }: Props) {
             />
           </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <div className="mt-6">
+            <DepthChart
+              tokenYes={row.tokenYes ?? null}
+              tokenNo={row.tokenNo ?? null}
+            />
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <OrderBookView
               tokenYes={row.tokenYes ?? null}
               tokenNo={row.tokenNo ?? null}
