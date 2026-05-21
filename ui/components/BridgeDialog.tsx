@@ -506,10 +506,24 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
             <button
               type="button"
               onClick={onClose}
-              disabled={inFlight}
+              // Cancel is only truly dangerous mid-deposit / mid-fill,
+              // where an on-chain tx is in flight that we'd orphan. In
+              // "approving" (user hasn't signed yet — they can just dismiss
+              // the wallet prompt) and "approveDone" (allowance already
+              // landed on-chain — closing doesn't affect it; they can
+              // re-open and continue), Cancel stays clickable. Without
+              // this users get locked out when the SDK silently stalls
+              // between approve.txSuccess and the deposit prompt.
+              disabled={
+                status.kind === "depositing" || status.kind === "filling"
+              }
               className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-[13px] font-medium text-muted hover:bg-surface-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {status.kind === "success" ? "Done" : "Cancel"}
+              {status.kind === "success"
+                ? "Done"
+                : status.kind === "approveDone"
+                  ? "Close — approval kept"
+                  : "Cancel"}
             </button>
             {status.kind !== "success" ? (
               <button
