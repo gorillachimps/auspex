@@ -284,9 +284,18 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
           );
         },
         sortingFn: (a, b) => {
-          const at = Date.parse(a.original.endDate ?? "") || Number.POSITIVE_INFINITY;
-          const bt = Date.parse(b.original.endDate ?? "") || Number.POSITIVE_INFINITY;
-          return at - bt;
+          // Sort by TIME-UNTIL-CLOSE rather than absolute endDate. Already-
+          // ended markets (negative remaining time) and date-less markets
+          // both sink to the bottom in ascending sort — soonest TRADEABLE
+          // first. Without this, ended markets had the smallest absolute
+          // timestamp and bubbled to the top of "closes soonest", which is
+          // exactly the wrong order from a trader's perspective.
+          const now = Date.now();
+          const av = Date.parse(a.original.endDate ?? "");
+          const bv = Date.parse(b.original.endDate ?? "");
+          const ar = Number.isFinite(av) && av > now ? av - now : Number.POSITIVE_INFINITY;
+          const br = Number.isFinite(bv) && bv > now ? bv - now : Number.POSITIVE_INFINITY;
+          return ar - br;
         },
         size: 80,
       }),

@@ -26,7 +26,11 @@ const LIVE_SUBSCRIBE_TOP_N = 50;
 
 const FAMILY_VALUES = SUBTYPE_CHIPS.map((c) => c.family);
 const familyParser = parseAsStringLiteral(FAMILY_VALUES).withDefault("all");
-const sortParser = parseAsString.withDefault("volume24h:desc");
+// Default sort: closes-soonest first. The screener's whole reason to exist
+// is helping you find sharp short-dated bets — ranking by 24h volume hid
+// today's daily/weekly strikes underneath month-out lifetime-volume
+// leaders. Click the "24h volume" header once to swap back.
+const sortParser = parseAsString.withDefault("days:asc");
 const searchParser = parseAsString.withDefault("");
 const tickerParser = parseAsString.withDefault("");
 const starredParser = parseAsStringLiteral(["1"] as const);
@@ -36,7 +40,7 @@ type Props = {
   rows: TableRow[];
 };
 
-const DEFAULT_SORT = "volume24h:desc";
+const DEFAULT_SORT = "days:asc";
 
 function parseSort(s: string): SortingState {
   if (!s) return [];

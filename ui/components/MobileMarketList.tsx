@@ -52,8 +52,16 @@ function sortRows(rows: TableRow[], sorting: SortingState): TableRow[] {
         return r.distancePct == null ? null : Math.abs(r.distancePct);
       case "rc":
         return r.rc;
-      case "days":
-        return r.endDate ? Date.parse(r.endDate) : null;
+      case "days": {
+        // Time-until-close, not absolute endDate. Ended / date-less
+        // markets sink to the bottom of asc sort instead of bubbling up
+        // (since their absolute timestamp would be the smallest).
+        if (!r.endDate) return null;
+        const t = Date.parse(r.endDate);
+        if (!Number.isFinite(t)) return null;
+        const remaining = t - Date.now();
+        return remaining > 0 ? remaining : null;
+      }
       case "delta24h":
         return r.oneDayChange == null ? null : Math.abs(r.oneDayChange);
       case "volume24h":
