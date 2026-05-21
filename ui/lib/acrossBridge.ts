@@ -130,6 +130,15 @@ export async function executeBridge(params: {
     deposit: params.quote.deposit,
     walletClient: params.walletClient,
     forceOriginChain: true,
+    // Approve max-uint256 the FIRST time we need an approval, so the user
+    // never has to re-approve for future bridges of the same token from
+    // the same chain. The default SDK behavior approves exact-amount each
+    // time, which means a user who bridged 2.10 USDC last time and tries
+    // 2.111081 now gets a fresh approve prompt — annoying and wastes gas.
+    // Max-uint256 is the standard "unlimited approval" pattern; the
+    // Across spoke pool is a battle-tested audited contract, so the
+    // smart-contract risk of unlimited approval is bounded.
+    infiniteApproval: true,
     onProgress: params.onProgress,
   });
 }
