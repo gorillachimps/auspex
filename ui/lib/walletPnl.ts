@@ -131,13 +131,21 @@ export function computeWalletPnl(
   }
 
   // Sort closing trades chronologically and build the cumulative curve.
+  // Dedup by timestamp: when multiple SELLs land in the same second
+  // (common — Polymarket data-api gives unix-second precision, so anything
+  // closed in the same second collides), keep only the LAST cumulative
+  // value for that second. Charting libs like lightweight-charts reject
+  // duplicate time keys and silently fail to draw the series otherwise.
   closingTrades.sort((a, b) => a.t - b.t);
-  const curve: PnlPoint[] = [];
+  const curveByT = new Map<number, number>();
   let running = 0;
   for (const c of closingTrades) {
     running += c.pnl;
-    curve.push({ t: c.t, cumRealized: running });
+    curveByT.set(c.t, running);
   }
+  const curve: PnlPoint[] = [...curveByT.entries()]
+    .map(([t, cumRealized]) => ({ t, cumRealized }))
+    .sort((a, b) => a.t - b.t);
 
   const realizedTotal = running;
 

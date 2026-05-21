@@ -108,14 +108,23 @@ export function WalletPnLChart({ curve }: Props) {
     };
   }, []);
 
-  const dataPoints = useMemo(
-    () =>
-      curve.map((p) => ({
-        time: Math.floor(p.t / 1000) as UTCTimestamp,
-        value: p.cumRealized,
-      })),
-    [curve],
-  );
+  // Lightweight-charts requires strictly ascending UNIQUE timestamps per
+  // series. We floor to second precision for the time axis, then dedupe
+  // (keep the LAST value at each second) — belt-and-braces over the
+  // dedup in computeWalletPnl, in case the curve generator changes.
+  const dataPoints = useMemo(() => {
+    const bySecond = new Map<number, number>();
+    for (const p of curve) {
+      const sec = Math.floor(p.t / 1000);
+      bySecond.set(sec, p.cumRealized);
+    }
+    return [...bySecond.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([sec, value]) => ({
+        time: sec as UTCTimestamp,
+        value,
+      }));
+  }, [curve]);
 
   useEffect(() => {
     const series = seriesRef.current;
