@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { TopNav } from "@/components/TopNav";
 import { Footer } from "@/components/Footer";
 import { ApprovalBanner } from "@/components/ApprovalBanner";
+import { PortfolioTabs } from "@/components/PortfolioTabs";
 import { PortfolioView } from "@/components/PortfolioView";
 import { TotalBalance } from "@/components/TotalBalance";
 
@@ -20,16 +21,9 @@ export default function PortfolioPage() {
       <ApprovalBanner />
       <main id="main" className="flex-1">
         <div className="mx-auto max-w-[1480px] px-4 py-6">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h1 className="text-xl font-semibold tracking-tight">Portfolio</h1>
-            <a
-              href="/orders"
-              className="text-[12px] text-muted hover:text-foreground"
-            >
-              View open orders →
-            </a>
-          </div>
-          <p className="mt-1 max-w-2xl text-sm text-muted">
+          <h1 className="text-xl font-semibold tracking-tight">Portfolio</h1>
+          <PortfolioTabs active="positions" />
+          <p className="mt-3 max-w-2xl text-sm text-muted">
             Your open Polymarket positions, valued at the current market
             price. Updates every 30 seconds.
           </p>
