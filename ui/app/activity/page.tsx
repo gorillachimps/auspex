@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { TopNav } from "@/components/TopNav";
 import { Footer } from "@/components/Footer";
 import { ActivityView } from "@/components/ActivityView";
+import { PortfolioTabs } from "@/components/PortfolioTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -16,21 +17,12 @@ export default function ActivityPage() {
       <TopNav active="activity" />
       <main id="main" className="flex-1">
         <div className="mx-auto max-w-[1480px] px-4 py-6">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight">Activity</h1>
-              <p className="mt-1 max-w-2xl text-sm text-muted">
-                Every fill across every market for your connected account.
-                Linked to the underlying market and the on-chain transaction.
-              </p>
-            </div>
-            <a
-              href="/portfolio"
-              className="text-[12px] text-muted hover:text-foreground"
-            >
-              View portfolio →
-            </a>
-          </div>
+          <h1 className="text-xl font-semibold tracking-tight">Portfolio</h1>
+          <PortfolioTabs active="activity" />
+          <p className="mt-3 max-w-2xl text-sm text-muted">
+            Every fill across every market for your connected account.
+            Linked to the underlying market and the on-chain transaction.
+          </p>
           <ActivityView />
         </div>
       </main>

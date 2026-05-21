@@ -17,7 +17,18 @@ import requests
 
 GAMMA = "https://gamma-api.polymarket.com"
 TAG_SLUG = "crypto"
-PAGE_SIZE = 500
+# Gamma silently caps /events at 100 per page regardless of the `limit`
+# query param. Earlier versions of this script set PAGE_SIZE=500 and used
+# `len(page) < PAGE_SIZE` as the stop condition — which broke after a
+# single page because gamma returned 100 < 500. Only ~100 events made it
+# into the snapshot, hiding short-dated weeklies/dailies like
+# bitcoin-above-on-may-21. Now: page size 100 (the real cap), and we
+# loop until gamma returns an empty page.
+PAGE_SIZE = 100
+# Safety cap so a runaway pagination doesn't iterate forever on a gamma
+# bug. Crypto vertical sits around 3-4k active events in practice — this
+# gives us a healthy margin without ever pulling the firehose.
+MAX_OFFSET = 10_000
 OUT_PATH = Path(__file__).parent / "data" / "crypto-events.json"
 
 
@@ -46,9 +57,13 @@ def main() -> None:
         for e in page:
             by_id[e.get("id")] = e
         print(f"  offset {offset:>5}: page={len(page):>3}  new={new:>3}  total={len(by_id):>4}")
-        if len(page) < PAGE_SIZE:
+        # Empty page → we've exhausted gamma's list.
+        if len(page) == 0:
             break
         offset += PAGE_SIZE
+        if offset >= MAX_OFFSET:
+            print(f"  hit MAX_OFFSET ({MAX_OFFSET:,}); stopping")
+            break
         time.sleep(0.2)
 
     events = list(by_id.values())

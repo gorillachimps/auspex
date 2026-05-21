@@ -1,6 +1,6 @@
 import { cn } from "@/lib/cn";
 
-type Tab = "positions" | "orders";
+type Tab = "positions" | "orders" | "activity";
 
 type Props = {
   active: Tab;
@@ -9,6 +9,7 @@ type Props = {
 const TABS: Array<{ id: Tab; label: string; href: string }> = [
   { id: "positions", label: "Positions", href: "/portfolio" },
   { id: "orders", label: "Open orders", href: "/orders" },
+  { id: "activity", label: "Activity", href: "/activity" },
 ];
 
 /**

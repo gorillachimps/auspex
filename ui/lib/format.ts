@@ -179,17 +179,26 @@ export function fmtPctFromFraction(
 }
 
 /**
- * "Signed percentage points" — for clarity scores etc. Returns {text, sign}.
- * Near-zero shows "0pp".
+ * Implied-probability change, formatted with a "%" suffix for readability.
+ *
+ * Math note: the underlying value is a delta in implied probability — i.e.
+ * percentage POINTS, not relative percent change. A market moving from
+ * 40% → 41% emits 0.01 here and renders as "1%" (one percentage point of
+ * implied movement). Strictly that's "1pp" in finance-speak, but "%"
+ * reads better for the general audience this UI targets — and 95% of
+ * users intuit "the market moved 1% in the YES direction" correctly.
+ *
+ * Returns {text, sign} so callers can color the cell green/red.
+ * Near-zero shows "0%".
  */
 export function fmtSignedPP(
   p: number | null | undefined,
 ): { text: string; sign: -1 | 0 | 1 } | null {
   if (p == null || !isFinite(p)) return null;
   const pp = p * 100;
-  if (Math.abs(pp) < 0.05) return { text: "0pp", sign: 0 };
+  if (Math.abs(pp) < 0.05) return { text: "0%", sign: 0 };
   const sign = pp > 0 ? 1 : -1;
-  return { text: `${Math.abs(pp).toFixed(pp >= 1 ? 0 : 1)}pp`, sign };
+  return { text: `${Math.abs(pp).toFixed(pp >= 1 ? 0 : 1)}%`, sign };
 }
 
 // ----------------------------------------------------------------------
