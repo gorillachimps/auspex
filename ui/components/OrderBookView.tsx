@@ -30,18 +30,37 @@ export function OrderBookView({ tokenYes, tokenNo }: Props) {
   const wsStatus = useWsStatus();
 
   // Best `DEPTH` levels on each side, oriented so the spread sits in the middle.
-  // Asks: worst on top → best ask (lowest price) just above the spread.
-  // Bids: best bid (highest price) just below the spread → worst at the bottom.
+  //   Asks rendered top→bottom = worst (highest price) → best (lowest price,
+  //   just above the spread).
+  //   Bids rendered top→bottom = best (highest price, just below the spread)
+  //   → worst (lowest).
+  //
+  // Cumulative depth follows the exchange convention: each row's `cum` is
+  // the total size fillable at THIS price or BETTER (closer to spread).
+  // So the bar grows OUTWARD from the spread — the row closest to the
+  // spread shows just its own level's size, the row furthest shows the
+  // full sum. This matches Coinbase / Hyperliquid / dYdX.
   const { topBids, topAsks, maxCum } = useMemo(() => {
     if (!book) return { topBids: [], topAsks: [], maxCum: 1 };
     const asks = book.asks.slice(-DEPTH);
     const bids = book.bids.slice(-DEPTH).reverse();
 
+    // Asks are descending in `asks`: asks[0] = worst, asks[last] = best.
+    // Walk from BEST (last) backward toward worst, accumulating, so the
+    // best-ask row gets `cum = its own size` and the worst-ask row gets
+    // `cum = sum of all 8 levels`.
     let cumA = 0;
-    const asksDecorated = asks.map((lvl) => {
-      cumA += parseFloat(lvl.size);
-      return { ...lvl, cum: cumA };
-    });
+    const asksDecorated = new Array<{ price: string; size: string; cum: number }>(
+      asks.length,
+    );
+    for (let i = asks.length - 1; i >= 0; i--) {
+      cumA += parseFloat(asks[i].size);
+      asksDecorated[i] = { ...asks[i], cum: cumA };
+    }
+
+    // Bids are descending after the reverse above: bids[0] = best, bids[last]
+    // = worst. Walk forward, accumulating, so best-bid row gets just its own
+    // size and the worst-bid row gets the full sum.
     let cumB = 0;
     const bidsDecorated = bids.map((lvl) => {
       cumB += parseFloat(lvl.size);

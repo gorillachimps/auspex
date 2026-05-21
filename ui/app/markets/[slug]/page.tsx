@@ -5,6 +5,7 @@ import { TopNav } from "@/components/TopNav";
 import { Footer } from "@/components/Footer";
 import { DeltaBar } from "@/components/DeltaBar";
 import { RcBar } from "@/components/RcBar";
+import { BuyPanel } from "@/components/BuyPanel";
 import { PositionCard } from "@/components/PositionCard";
 import { OrderBookView } from "@/components/OrderBookView";
 import { DepthChart } from "@/components/DepthChart";
@@ -167,6 +168,10 @@ export default async function MarketDetailPage({ params }: Props) {
           </div>
 
           <div className="mt-6">
+            <BuyPanel market={row} />
+          </div>
+
+          <div className="mt-4">
             <PositionCard market={row} />
           </div>
 
