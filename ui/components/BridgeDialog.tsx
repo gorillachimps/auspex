@@ -42,7 +42,8 @@ type Props = {
 
 type Status =
   | { kind: "idle" }
-  | { kind: "approving" }
+  | { kind: "approving" } // approve tx pending (user signing or block confirming)
+  | { kind: "approveDone" } // approve confirmed, waiting on SDK to prompt deposit
   | { kind: "depositing" }
   | { kind: "filling"; depositTxHash?: `0x${string}` }
   | { kind: "success"; fillTxHash?: `0x${string}` }
@@ -83,6 +84,7 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
   // fresh closure whenever the in-flight gate flips.
   const inFlightForEsc =
     status.kind === "approving" ||
+    status.kind === "approveDone" ||
     status.kind === "depositing" ||
     status.kind === "filling";
   useEffect(() => {
@@ -181,6 +183,7 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
     belowMin ||
     aboveMax ||
     status.kind === "approving" ||
+    status.kind === "approveDone" ||
     status.kind === "depositing" ||
     status.kind === "filling";
 
@@ -202,7 +205,17 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
             return;
           }
           if (progress.step === "approve") {
-            setStatus({ kind: "approving" });
+            // Distinguish "approve still pending" from "approve confirmed,
+            // SDK about to prompt the deposit tx". Without this, the UI
+            // claims "Approving…" indefinitely while we're actually waiting
+            // for the user to sign the deposit prompt in their wallet —
+            // which they often miss because the popup hides behind the
+            // page.
+            if (progress.status === "txSuccess") {
+              setStatus({ kind: "approveDone" });
+            } else {
+              setStatus({ kind: "approving" });
+            }
           } else if (progress.step === "deposit") {
             const next: Status =
               progress.status === "txPending"
@@ -444,9 +457,11 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
             <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
             {status.kind === "approving"
               ? "Approving USDC for the Across spoke pool…"
-              : status.kind === "depositing"
-                ? "Depositing on the source chain…"
-                : "Waiting for fill on Polygon…"}
+              : status.kind === "approveDone"
+                ? "Approval confirmed. Check your wallet to sign the deposit…"
+                : status.kind === "depositing"
+                  ? "Depositing on the source chain…"
+                  : "Waiting for fill on Polygon…"}
           </div>
         ) : null}
 
