@@ -11,15 +11,16 @@ import {
   Loader2,
   X,
 } from "lucide-react";
-import { useBalance, useWalletClient } from "wagmi";
+import { useBalance, usePublicClient, useWalletClient } from "wagmi";
 import { toast } from "sonner";
-import { formatUnits, parseUnits } from "viem";
+import { erc20Abi, formatUnits, parseUnits } from "viem";
 import {
   bridgeQuote,
   executeBridge,
   POLYGON_CHAIN_ID,
   POLYGON_USDC_E,
   SOURCE_CHAINS,
+  SPOKE_POOL_BY_CHAIN,
   USDC_BY_CHAIN,
   USDC_DECIMALS,
   type ExecutionProgress,
@@ -125,6 +126,59 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
     query: { enabled: !!eoa && open },
   });
 
+  // Pull walletClient up here (above the allowance check) so it's in
+  // scope by the time the useEffect references it. (useWalletClient was
+  // originally declared further down but the allowance check needs the
+  // same instance.)
+  const { data: walletClient } = useWalletClient();
+
+  // Public read-only client for the source chain — wagmi gives us one
+  // per chainId, and `readContract` lives on PublicClient, not WalletClient.
+  const sourcePublicClient = usePublicClient({ chainId: fromChainId });
+
+  // Existing on-chain allowance from the user's EOA to the Across spoke
+  // pool on the source chain. When this covers the bridge amount, the
+  // submit button labels itself "Deposit" instead of "Approve + bridge"
+  // — users who already paid for an approval in a prior session don't
+  // get a misleading "Approve" UI when their wallet is going to be
+  // prompted for the deposit tx, not approve. null = haven't checked yet.
+  const [allowance, setAllowance] = useState<bigint | null>(null);
+  useEffect(() => {
+    if (!open || !eoa) {
+      setAllowance(null);
+      return;
+    }
+    let cancelled = false;
+    const spokePool = SPOKE_POOL_BY_CHAIN[fromChainId];
+    const usdcAddr = USDC_BY_CHAIN[fromChainId];
+    if (!spokePool || !usdcAddr || !sourcePublicClient) return;
+    (async () => {
+      try {
+        const result = await sourcePublicClient.readContract({
+          address: usdcAddr,
+          abi: erc20Abi,
+          functionName: "allowance",
+          args: [eoa, spokePool],
+        });
+        if (!cancelled) setAllowance(result as bigint);
+      } catch {
+        if (!cancelled) setAllowance(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Re-check whenever chain/wallet changes; also after a successful
+    // bridge so we reflect the deposit-consumed allowance state. We
+    // deliberately exclude allowance itself to avoid loops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, eoa, fromChainId, sourcePublicClient, status.kind === "success"]);
+
+  // True iff the user has already approved enough USDC for the current
+  // bridge amount — no approve step needed; we go straight to deposit.
+  const hasAllowance =
+    allowance != null && amountUSDC != null && allowance >= amountUSDC;
+
   // Debounced quote fetch.
   useEffect(() => {
     if (!open) return;
@@ -154,8 +208,6 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
       clearTimeout(timer);
     };
   }, [open, fromChainId, amountUSDC, toAddress]);
-
-  const { data: walletClient } = useWalletClient();
 
   // Defer portal mounting until after hydration so SSR doesn't see a stub.
   const [mounted, setMounted] = useState(false);
@@ -189,7 +241,12 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
 
   async function onSubmit() {
     if (!quote || !walletClient) return;
-    setStatus({ kind: "approving" });
+    // Optimistic state depends on whether the SDK is going to ask for
+    // approve first (no existing allowance) or jump straight to deposit
+    // (allowance already covers this amount). Without this the dialog
+    // claims "Approving…" even when the wallet is about to prompt for
+    // deposit — confusing for repeat users.
+    setStatus(hasAllowance ? { kind: "depositing" } : { kind: "approving" });
     try {
       const result = await executeBridge({
         quote,
@@ -537,7 +594,7 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
                 ) : (
                   <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
                 )}
-                Bridge
+                {hasAllowance ? "Deposit" : "Bridge"}
               </button>
             ) : null}
           </div>

@@ -30,6 +30,21 @@ export const USDC_BY_CHAIN: Record<number, Address> = {
   [base.id]: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
 };
 
+// Across V3 spoke pool addresses per source chain. Used as the ERC20
+// allowance spender — when a user approves USDC for the bridge, this is
+// the contract receiving the allowance. Letting the dialog read the
+// current allowance pre-flight lets us label the action button "Deposit"
+// vs "Approve + bridge" so users with an existing allowance know they're
+// going straight to the deposit step. Addresses are stable per Across's
+// canonical deployment and verifiable at
+// https://docs.across.to/reference/contract-addresses.
+export const SPOKE_POOL_BY_CHAIN: Record<number, Address> = {
+  [mainnet.id]: "0x5c7BCd6E7De5423a257D81B442095A1a6ced35C5",
+  [optimism.id]: "0x6f26Bf09B1C792e3228e5467807a900A503c0281",
+  [arbitrum.id]: "0xe35e9842FCEaCa96570B734083f4a58e8f7c5f2A",
+  [base.id]: "0x09aea4b2242abc8bb4bb78d537a67a245a7bec64",
+};
+
 // Polymarket's collateral on Polygon is the *bridged* USDC.e, not native USDC.
 // Across recognises this address as a valid destination output token.
 export const POLYGON_USDC_E: Address =
