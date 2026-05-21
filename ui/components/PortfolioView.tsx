@@ -8,8 +8,12 @@ import {
   Download,
   Search,
   X,
+  XCircle,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useClobSession } from "@/lib/useClobSession";
+import { useMarketLookup } from "@/lib/useMarketLookup";
+import { placeMarketOrder, Side, tickToString } from "@/lib/polymarket";
 import { cn } from "@/lib/cn";
 import { csvFilename, downloadCsv, toCsv } from "@/lib/csv";
 import {
@@ -25,6 +29,11 @@ import { LoadingState } from "./ui/LoadingState";
 import { SortableTh, Td, Th } from "./ui/DataTable";
 import type { SortDir } from "./ui/DataTable";
 import { MobilePositionList } from "./MobilePositionList";
+
+// Polymarket's default tick size when the snapshot didn't capture one.
+// Almost all binary markets are 0.01; the few thin-price markets use 0.001
+// and would be present in the lookup if so.
+const DEFAULT_TICK = 0.01;
 
 type SortKey =
   | "market"
@@ -88,6 +97,20 @@ export function PortfolioView() {
   // Default sort: best winners on top — what most traders want first.
   const [sortKey, setSortKey] = useState<SortKey>("pnl");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  // `closing` tracks per-position close-in-flight so the row buttons can
+  // show a spinner and we can prevent double-submits. Keyed by asset id.
+  const [closing, setClosing] = useState<Set<string>>(() => new Set());
+  // `closeAllConfirm` gates the bulk-close action behind a confirmation
+  // panel. null = closed; "review" = panel shown; "running" = in-flight.
+  const [closeAllMode, setCloseAllMode] = useState<
+    null | "review" | "running"
+  >(null);
+  // Live progress during a bulk close.
+  const [bulkProgress, setBulkProgress] = useState<{
+    done: number;
+    failed: number;
+    total: number;
+  } | null>(null);
   const [query, setQuery] = useState("");
   // Tick once a second so the "Updated Xs ago" label stays fresh between
   // auto-refresh ticks. Cheap — one re-render per second, no network.
@@ -218,6 +241,98 @@ export function PortfolioView() {
   const shownCount = sortedPositions?.length ?? 0;
   const filterActive = query.trim().length > 0;
 
+  // Look up tickSize + negRisk for every position's token so we can submit
+  // valid market sells. The hook batches into one /api/markets/by-token call
+  // and caches across re-renders.
+  const tokenIds = useMemo(
+    () => (state.positions ?? []).map((p) => p.asset).filter(Boolean),
+    [state.positions],
+  );
+  const tokenLookup = useMarketLookup(tokenIds);
+
+  // Close ONE position with a Fill-and-Kill market sell. Pulls tickSize from
+  // the lookup (defaults to 0.01 when the market isn't in our snapshot —
+  // most binary markets use 0.01 and the SDK will reject if wrong, so we
+  // surface that as a toast error). Builder code rides on every order via
+  // placeMarketOrder.
+  async function closeOne(p: Position): Promise<boolean> {
+    if (!session.client) {
+      toast.error("Sign in to close positions.");
+      return false;
+    }
+    if (closing.has(p.asset)) return false;
+    setClosing((s) => new Set(s).add(p.asset));
+    const lookup = tokenLookup[p.asset];
+    const tickSize = tickToString(lookup?.tickSize ?? DEFAULT_TICK);
+    const negRisk = lookup?.negRisk ?? !!p.negativeRisk;
+    const toastId = toast.loading(
+      `Closing ${p.size.toFixed(2)} ${p.outcome.toUpperCase()} of ${p.title.slice(0, 60)}…`,
+    );
+    try {
+      const resp = await placeMarketOrder({
+        client: session.client,
+        tokenID: p.asset,
+        amount: p.size,
+        side: Side.SELL,
+        tickSize,
+        negRisk,
+      });
+      if (resp && typeof resp === "object" && (resp as { success?: boolean }).success === false) {
+        throw new Error(
+          (resp as { errorMsg?: string }).errorMsg || "order rejected",
+        );
+      }
+      toast.success(
+        `Closed ${p.size.toFixed(2)} ${p.outcome.toUpperCase()} ≈ ${fmtUSD(p.currentValue)}`,
+        { id: toastId, duration: 5000 },
+      );
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("auspex:order-placed"));
+      }
+      return true;
+    } catch (e) {
+      const msg = (e as Error).message ?? "unknown error";
+      toast.error(`Couldn't close: ${msg}`, { id: toastId, duration: 8000 });
+      return false;
+    } finally {
+      setClosing((s) => {
+        const next = new Set(s);
+        next.delete(p.asset);
+        return next;
+      });
+    }
+  }
+
+  // Sequentially market-sell every open position. Sequential (not parallel)
+  // so we don't flood the CLOB with N concurrent FAK orders and risk rate
+  // limits or partial-fill weirdness when the same trader sells across
+  // multiple markets in one second. Reports running progress so the user
+  // can see it actually working on large portfolios.
+  async function closeAll() {
+    const positions = state.positions ?? [];
+    if (positions.length === 0) return;
+    setCloseAllMode("running");
+    setBulkProgress({ done: 0, failed: 0, total: positions.length });
+    let done = 0;
+    let failed = 0;
+    for (const p of positions) {
+      const ok = await closeOne(p);
+      if (ok) done += 1;
+      else failed += 1;
+      setBulkProgress({ done, failed, total: positions.length });
+    }
+    setCloseAllMode(null);
+    setBulkProgress(null);
+    if (failed === 0) {
+      toast.success(`Closed all ${done} positions.`, { duration: 5000 });
+    } else {
+      toast.warning(
+        `Closed ${done} of ${positions.length} positions — ${failed} failed.`,
+        { duration: 7000 },
+      );
+    }
+  }
+
   if (session.status === "disabled") {
     return (
       <div className="mt-8">
@@ -347,6 +462,27 @@ export function PortfolioView() {
         <div className="ml-auto flex items-center gap-1.5">
           <button
             type="button"
+            onClick={() => setCloseAllMode("review")}
+            disabled={
+              !state.positions ||
+              state.positions.length === 0 ||
+              closeAllMode === "running" ||
+              session.status !== "ready"
+            }
+            title={`Market-sell all ${state.positions?.length ?? 0} open positions in one go`}
+            className="inline-flex items-center gap-1 rounded-md border border-rose-400/40 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {closeAllMode === "running" ? (
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+            ) : (
+              <XCircle className="h-3 w-3" aria-hidden="true" />
+            )}
+            {closeAllMode === "running" && bulkProgress
+              ? `Closing ${bulkProgress.done + bulkProgress.failed} / ${bulkProgress.total}…`
+              : "Close all"}
+          </button>
+          <button
+            type="button"
             onClick={() => {
               if (!state.positions || state.positions.length === 0) return;
               const headers = [
@@ -425,6 +561,53 @@ export function PortfolioView() {
         </div>
       </div>
 
+      {closeAllMode === "review" && state.positions && state.positions.length > 0 ? (
+        <div className="mb-4 rounded-md border border-rose-400/40 bg-rose-500/10 p-3">
+          <div className="flex items-start gap-2">
+            <XCircle
+              className="mt-0.5 h-4 w-4 shrink-0 text-rose-300"
+              aria-hidden="true"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="text-[12px] font-semibold text-rose-200">
+                Close all positions at market?
+              </div>
+              <p className="mt-1 text-[12px] text-rose-100/90">
+                Auspex will market-sell each of your {state.positions.length}{" "}
+                open positions, one at a time. Estimated total proceeds:{" "}
+                <span className="font-semibold tabular">
+                  {fmtUSD(
+                    state.positions.reduce(
+                      (s, p) => s + (isFinite(p.currentValue) ? p.currentValue : 0),
+                      0,
+                    ),
+                  )}
+                </span>
+                . Actual fills depend on each market's live order book — thin
+                books may fill at worse prices than the displayed mid.
+              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCloseAllMode(null)}
+                  className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-[12px] font-medium text-muted hover:bg-surface-2 hover:text-foreground"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={closeAll}
+                  className="inline-flex items-center gap-1 rounded-md border border-rose-400/60 bg-rose-500/20 px-3 py-1.5 text-[12px] font-semibold text-rose-100 hover:bg-rose-500/30"
+                >
+                  <XCircle className="h-3 w-3" aria-hidden="true" />
+                  Confirm — close all
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {totalLoaded > 4 ? (
         <div className="mb-3">
           <div className="relative max-w-sm">
@@ -469,7 +652,15 @@ export function PortfolioView() {
         </div>
       ) : (
       <>
-      <MobilePositionList positions={sortedPositions ?? []} />
+      <MobilePositionList
+        positions={sortedPositions ?? []}
+        onClose={(asset) => {
+          const pos = (sortedPositions ?? []).find((p) => p.asset === asset);
+          if (pos) closeOne(pos);
+        }}
+        closing={closing}
+        closeDisabled={closeAllMode === "running" || session.status !== "ready"}
+      />
       <div className="hidden sm:block overflow-x-auto rounded-md border border-border bg-surface/20">
         <table className="w-full min-w-[1080px] border-separate border-spacing-0 text-sm">
           <thead>
@@ -582,15 +773,35 @@ export function PortfolioView() {
                     })()}
                   </Td>
                   <Td>
-                    <a
-                      href={`https://polymarket.com/event/${p.slug}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-0.5 rounded text-[11px] text-muted hover:text-foreground"
-                      title="Open on Polymarket"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
+                    <div className="inline-flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => closeOne(p)}
+                        disabled={
+                          closing.has(p.asset) ||
+                          closeAllMode === "running" ||
+                          session.status !== "ready"
+                        }
+                        title={`Market-sell all ${p.size.toFixed(2)} ${p.outcome} shares (~${fmtUSD(p.currentValue)})`}
+                        className="inline-flex items-center gap-1 rounded-md border border-rose-400/40 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-rose-200 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {closing.has(p.asset) ? (
+                          <Loader2 className="h-2.5 w-2.5 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <XCircle className="h-2.5 w-2.5" aria-hidden="true" />
+                        )}
+                        Close
+                      </button>
+                      <a
+                        href={`https://polymarket.com/event/${p.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-0.5 rounded text-[11px] text-muted hover:text-foreground"
+                        title="Open on Polymarket"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
                   </Td>
                 </tr>
               );

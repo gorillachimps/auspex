@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink } from "lucide-react";
+import { Loader2, XCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   fmtCloseIn,
@@ -30,6 +30,14 @@ type Position = {
 
 type Props = {
   positions: Position[];
+  /** When provided, renders a per-card "Close" button that calls back into
+   *  the parent's close-one handler. Omit for read-only contexts (e.g.
+   *  someone else's wallet). */
+  onClose?: (asset: string) => void;
+  /** Set of asset ids currently mid-close, used to spin the per-row button. */
+  closing?: Set<string>;
+  /** Disable all close buttons (e.g. bulk close in progress). */
+  closeDisabled?: boolean;
 };
 
 /**
@@ -37,7 +45,12 @@ type Props = {
  * desktop table shows, presented vertically per position to avoid horizontal
  * scroll on phones.
  */
-export function MobilePositionList({ positions }: Props) {
+export function MobilePositionList({
+  positions,
+  onClose,
+  closing,
+  closeDisabled,
+}: Props) {
   return (
     <div className="flex flex-col gap-2 sm:hidden">
       {positions.map((p) => {
@@ -52,11 +65,15 @@ export function MobilePositionList({ positions }: Props) {
               : urgency === "ended"
                 ? "text-muted-2"
                 : "text-muted";
+        const isClosing = closing?.has(p.asset) ?? false;
         return (
-          <a
+          <div
             key={`${p.conditionId}-${p.asset}`}
+            className="rounded-md border border-border bg-surface/40 px-3 py-2.5"
+          >
+          <a
             href={`/markets/${p.slug}`}
-            className="block rounded-md border border-border bg-surface/40 px-3 py-2.5 active:bg-surface-2/50"
+            className="block"
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
@@ -111,6 +128,22 @@ export function MobilePositionList({ positions }: Props) {
               />
             </div>
           </a>
+          {onClose ? (
+            <button
+              type="button"
+              onClick={() => onClose(p.asset)}
+              disabled={isClosing || closeDisabled}
+              className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-md border border-rose-400/40 bg-rose-500/10 px-2 py-1.5 text-[12px] font-semibold text-rose-200 active:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isClosing ? (
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+              ) : (
+                <XCircle className="h-3 w-3" aria-hidden="true" />
+              )}
+              Close · {fmtUSD(p.currentValue)}
+            </button>
+          ) : null}
+          </div>
         );
       })}
     </div>

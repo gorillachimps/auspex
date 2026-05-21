@@ -304,3 +304,18 @@ export async function placeMarketOrder({
 }
 
 export { Side, OrderType };
+
+// Set of valid Polymarket tick sizes — the SDK's TickSize type is a string
+// union. Re-exported here so order-placing callers can normalize their own
+// numeric tickSize (e.g. from the snapshot) into the right string form.
+export const TICK_SIZES = ["0.0001", "0.001", "0.01", "0.1"] as const;
+export type TickStr = (typeof TICK_SIZES)[number];
+
+/** Normalize a numeric tick size (or null) into the SDK's string form.
+ *  Falls back to "0.01" when input is missing or doesn't match a known
+ *  tick — almost every Polymarket binary market uses 0.01 anyway. */
+export function tickToString(t: number | null | undefined): TickStr {
+  if (t == null) return "0.01";
+  const s = t.toString();
+  return (TICK_SIZES.includes(s as TickStr) ? s : "0.01") as TickStr;
+}

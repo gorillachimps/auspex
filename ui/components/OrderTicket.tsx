@@ -9,6 +9,7 @@ import {
   placeLimitOrder,
   placeMarketOrder,
   Side,
+  tickToString,
   updateAllowance,
 } from "@/lib/polymarket";
 import { useFocusTrap } from "@/lib/useFocusTrap";
@@ -39,14 +40,8 @@ type Props = {
   onClose: () => void;
 };
 
-const TICK_SIZES = ["0.0001", "0.001", "0.01", "0.1"] as const;
-type TickStr = (typeof TICK_SIZES)[number];
-
-function tickToString(t: number | null): TickStr {
-  if (t == null) return "0.01";
-  const s = t.toString();
-  return (TICK_SIZES.includes(s as TickStr) ? s : "0.01") as TickStr;
-}
+// tickToString moved to lib/polymarket.ts so other order-placing surfaces
+// (PortfolioView's close-position flow) can share it.
 
 type FillEstimate = {
   /** Volume-weighted avg price per share at the estimated fill. */

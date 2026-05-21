@@ -10,6 +10,13 @@ export type MarketLookupEntry = {
   family: string;
   outcome: "yes" | "no";
   impliedYes: number | null;
+  /** Polymarket tick size — needed to submit valid orders against this
+   *  token. Most markets are 0.01, but some thin-price ones are 0.001.
+   *  Null when unknown (caller should default to 0.01). */
+  tickSize: number | null;
+  /** "Negative risk" multi-leg flag. Affects how the SDK constructs the
+   *  order — must be threaded through to placeMarketOrder. */
+  negRisk: boolean;
 };
 
 const cache = new Map<string, MarketLookupEntry>();
@@ -104,4 +111,6 @@ const MISS_SENTINEL: MarketLookupEntry = {
   family: "",
   outcome: "yes",
   impliedYes: null,
+  tickSize: null,
+  negRisk: false,
 };

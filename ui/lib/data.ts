@@ -115,6 +115,12 @@ export type MarketLookupEntry = {
   family: TableRow["family"];
   outcome: "yes" | "no";
   impliedYes: number | null;
+  /** Polymarket tick size — needed to submit valid orders against this
+   *  token. Null when the snapshot didn't capture one (defaults to 0.01
+   *  on the caller side). */
+  tickSize: number | null;
+  /** "Negative risk" multi-leg flag. Threaded into placeMarketOrder. */
+  negRisk: boolean;
 };
 
 /** Look up market info for a batch of conditional-token IDs (asset IDs). Used
@@ -136,6 +142,8 @@ export async function getMarketsByTokens(
         family: r.family,
         outcome: "yes",
         impliedYes: r.impliedYes,
+        tickSize: r.tickSize,
+        negRisk: r.negRisk,
       };
     }
     if (r.tokenNo && wanted.has(r.tokenNo)) {
@@ -147,6 +155,8 @@ export async function getMarketsByTokens(
         family: r.family,
         outcome: "no",
         impliedYes: r.impliedYes,
+        tickSize: r.tickSize,
+        negRisk: r.negRisk,
       };
     }
   }
