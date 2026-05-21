@@ -175,9 +175,17 @@ export default async function MarketDetailPage({ params }: Props) {
             <PositionCard market={row} />
           </div>
 
+          {/* Recent fills + order book directly under the trade panel.
+              After a user places an order they want to see their fill print
+              in the tape — burying these below the analytics charts hides
+              that confirmation. RecentTradesView on the left so the eye
+              lands on the tape first. */}
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            <TradePressureBar tokenYes={row.tokenYes ?? null} />
-            <TradeSizeDistribution
+            <RecentTradesView
+              tokenYes={row.tokenYes ?? null}
+              tokenNo={row.tokenNo ?? null}
+            />
+            <OrderBookView
               tokenYes={row.tokenYes ?? null}
               tokenNo={row.tokenNo ?? null}
             />
@@ -190,12 +198,9 @@ export default async function MarketDetailPage({ params }: Props) {
             />
           </div>
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <OrderBookView
-              tokenYes={row.tokenYes ?? null}
-              tokenNo={row.tokenNo ?? null}
-            />
-            <RecentTradesView
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <TradePressureBar tokenYes={row.tokenYes ?? null} />
+            <TradeSizeDistribution
               tokenYes={row.tokenYes ?? null}
               tokenNo={row.tokenNo ?? null}
             />

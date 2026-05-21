@@ -152,6 +152,11 @@ export function OrderTicket({
   const [sizeStr, setSizeStr] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [approving, setApproving] = useState(false);
+  // When the user clicks Submit on a market order ≥ $100, we pause and
+  // surface a confirmation banner with the expected avg price and
+  // slippage before actually placing. They have to click again to send.
+  const [confirmingLargeMarket, setConfirmingLargeMarket] = useState(false);
+  const LARGE_MARKET_USD = 100;
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useFocusTrap(open, dialogRef, 'input[inputmode="decimal"]');
@@ -212,8 +217,19 @@ export function OrderTicket({
       const implied = market.impliedYes ?? 0.5;
       const start = initialOutcome === "yes" ? implied : 1 - implied;
       setPriceStr(start ? Math.max(0.01, Math.min(0.99, start)).toFixed(2) : "0.50");
+      // Reset the confirm-gate on every fresh open.
+      setConfirmingLargeMarket(false);
       if (initialOrderMode === "market" && maxShares != null && maxShares > 0) {
+        // Close-flow: pre-fill the FULL position size so one click sells it.
         setSizeStr(maxShares.toFixed(2));
+      } else if (side === "buy") {
+        // Buy flow: pre-fill a small starter so users can submit in one click.
+        // $5 matches the convention of "smallest meaningful test trade" and
+        // mirrors the lowest quick-size chip below — easy to clear, easy to
+        // increase. Polymarket itself opens with an empty field, but our
+        // BuyPanel ↔ market-default flow expects a single-click submit
+        // experience, and an empty input breaks that.
+        setSizeStr("5");
       } else {
         setSizeStr("");
       }
@@ -381,8 +397,28 @@ export function OrderTicket({
     }
   }
 
+  // Large-market gate: ≥ $100 market orders take a confirmation click to
+  // discourage accidental fat-finger trades and force the user to verify
+  // the avg-fill price + slippage estimate before sending. Limit orders
+  // don't need this — they can't slip past the limit price by definition.
+  const isLargeMarketBuy =
+    orderMode === "market" && side === "buy" && sizeInput >= LARGE_MARKET_USD;
+  const isLargeMarketSell =
+    orderMode === "market" &&
+    side === "sell" &&
+    marketFill != null &&
+    marketFill.usdc >= LARGE_MARKET_USD;
+  const needsLargeMarketConfirm =
+    (isLargeMarketBuy || isLargeMarketSell) && !confirmingLargeMarket;
+
   async function submit() {
     if (!session.client || !tokenId || !market) return;
+    if (needsLargeMarketConfirm) {
+      // First click on a ≥$100 market order: show the review banner and
+      // wait for the second click. Don't fire the order yet.
+      setConfirmingLargeMarket(true);
+      return;
+    }
     setSubmitting(true);
     const verb = side === "buy" ? "Buy" : "Sell";
     const modeLabel = orderMode === "market" ? " market" : "";
@@ -740,6 +776,57 @@ export function OrderTicket({
           </div>
         ) : null}
 
+        {confirmingLargeMarket && marketFill ? (
+          <div className="mt-4 rounded-md border border-amber-400/40 bg-amber-500/10 p-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle
+                className="mt-0.5 h-4 w-4 shrink-0 text-amber-300"
+                aria-hidden="true"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="text-[12px] font-semibold text-amber-200">
+                  Review your trade
+                </div>
+                <p className="mt-1 text-[12px] text-amber-100/90">
+                  Market orders fill against resting liquidity at whatever
+                  price clears the book. Confirm the numbers below before
+                  sending.
+                </p>
+                <ul className="mt-2 grid gap-1 text-[11px] tabular text-amber-100/90 sm:grid-cols-3">
+                  <li>
+                    <span className="text-amber-300/70">Avg fill</span>{" "}
+                    <span className="font-semibold">
+                      {marketFill.avgPrice != null
+                        ? `$${marketFill.avgPrice.toFixed(3)}`
+                        : "—"}
+                    </span>
+                  </li>
+                  <li>
+                    <span className="text-amber-300/70">Shares</span>{" "}
+                    <span className="font-semibold">
+                      ~{marketFill.shares.toFixed(2)}
+                    </span>
+                  </li>
+                  <li>
+                    <span className="text-amber-300/70">Slippage</span>{" "}
+                    <span className="font-semibold">
+                      {marketFill.slippagePct != null
+                        ? `${marketFill.slippagePct.toFixed(2)}%`
+                        : "—"}
+                    </span>
+                  </li>
+                </ul>
+                {!marketFill.fullyFillable ? (
+                  <p className="mt-2 text-[11px] text-amber-200">
+                    Heads up: the book may not have enough resting depth
+                    for this full size — your order could partially fill.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-4 flex items-center justify-end text-[11px] text-muted-2">
           <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300 ring-1 ring-emerald-400/30">
             0% fee · Polygon
@@ -749,10 +836,18 @@ export function OrderTicket({
         <div className="mt-4 flex items-center justify-end gap-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              if (confirmingLargeMarket) {
+                // Back out of the review banner without closing the dialog,
+                // so the user can edit size or switch to limit.
+                setConfirmingLargeMarket(false);
+                return;
+              }
+              onClose();
+            }}
             className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-[13px] font-medium text-muted hover:bg-surface-2 hover:text-foreground"
           >
-            Cancel
+            {confirmingLargeMarket ? "Back" : "Cancel"}
           </button>
           <button
             type="button"
@@ -770,7 +865,11 @@ export function OrderTicket({
             ) : null}
             {submitting
               ? "Placing…"
-              : `${side === "buy" ? "Buy" : "Sell"} ${outcome.toUpperCase()}`}
+              : confirmingLargeMarket
+                ? `Confirm ${side === "buy" ? "buy" : "sell"}`
+                : needsLargeMarketConfirm
+                  ? `Review ${side === "buy" ? "buy" : "sell"}`
+                  : `${side === "buy" ? "Buy" : "Sell"} ${outcome.toUpperCase()}`}
           </button>
         </div>
       </div>
