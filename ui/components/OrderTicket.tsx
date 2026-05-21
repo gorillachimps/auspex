@@ -125,7 +125,12 @@ export function OrderTicket({
   market,
   initialOutcome,
   side = "buy",
-  initialOrderMode = "limit",
+  // Default to market — when a user clicks Buy YES / Buy NO they overwhelmingly
+  // expect to fill immediately, not rest a limit order at the mid. Match the
+  // mental model of Kalshi / Polymarket-mobile / most retail brokerages.
+  // Limit is still one click away via the OrderModeToggle for users who want
+  // to set a specific price.
+  initialOrderMode = "market",
   maxShares,
   onClose,
 }: Props) {
