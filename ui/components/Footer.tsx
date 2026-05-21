@@ -17,6 +17,10 @@ export function Footer() {
           New here?
         </a>
         <span className="text-border-strong" aria-hidden="true">·</span>
+        <a href="/leaderboard" className="hover:text-foreground">
+          Leaderboard
+        </a>
+        <span className="text-border-strong" aria-hidden="true">·</span>
         <a href="/changelog" className="hover:text-foreground">
           Changelog v0.3
         </a>

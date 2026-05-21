@@ -107,6 +107,9 @@ export function BuilderStatsView() {
     let oldest: number | null = null;
     let newest: number | null = null;
     const traders = new Set<string>();
+    // Roll up volume by asset and by trader for the leaderboards.
+    const byAsset = new Map<string, { count: number; usdc: number }>();
+    const byTrader = new Map<string, { count: number; usdc: number }>();
     for (const t of state.trades) {
       count++;
       const usdc = parseFloat(t.sizeUsdc ?? "0");
@@ -123,10 +126,44 @@ export function BuilderStatsView() {
       // `owner` (UUID of the wallet that placed the order) is the meaningful
       // grouping for "unique traders".
       const traderKey = (t.owner ?? t.builder ?? "").toLowerCase();
-      if (traderKey) traders.add(traderKey);
+      if (traderKey) {
+        traders.add(traderKey);
+        const cur = byTrader.get(traderKey) ?? { count: 0, usdc: 0 };
+        cur.count += 1;
+        cur.usdc += isFinite(usdc) ? usdc : 0;
+        byTrader.set(traderKey, cur);
+      }
+      const assetKey = t.assetId ?? "";
+      if (assetKey) {
+        const cur = byAsset.get(assetKey) ?? { count: 0, usdc: 0 };
+        cur.count += 1;
+        cur.usdc += isFinite(usdc) ? usdc : 0;
+        byAsset.set(assetKey, cur);
+      }
     }
-    return { count, buyCount, sellCount, totalUsdc, oldest, newest, traders };
+    const topAssets = [...byAsset.entries()]
+      .sort((a, b) => b[1].usdc - a[1].usdc)
+      .slice(0, 5);
+    const topTraders = [...byTrader.entries()]
+      .sort((a, b) => b[1].usdc - a[1].usdc)
+      .slice(0, 5);
+    return {
+      count,
+      buyCount,
+      sellCount,
+      totalUsdc,
+      oldest,
+      newest,
+      traders,
+      topAssets,
+      topTraders,
+    };
   }, [state.trades]);
+
+  // Pre-fetch market metadata for the top-assets leaderboard so we can show
+  // the human-readable market question, not just an asset ID.
+  const topAssetTokenIds = summary?.topAssets.map(([id]) => id) ?? [];
+  const topAssetLookup = useMarketLookup(topAssetTokenIds);
 
   if (state.trades == null && state.loading) {
     return (
@@ -212,6 +249,102 @@ export function BuilderStatsView() {
           </button>
         </div>
       </div>
+
+      {summary && (summary.topAssets.length > 0 || summary.topTraders.length > 0) ? (
+        <div className="mb-4 grid gap-3 lg:grid-cols-2">
+          {summary.topAssets.length > 0 ? (
+            <section className="rounded-md border border-border bg-surface/40 p-4">
+              <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-2">
+                Top markets · attributed volume
+              </h2>
+              <ul className="divide-y divide-border/60">
+                {summary.topAssets.map(([assetId, stats], i) => {
+                  const market = topAssetLookup[assetId];
+                  const rank = i + 1;
+                  return (
+                    <li key={assetId} className="flex items-center gap-2 py-2">
+                      <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-surface-2 text-[10px] font-bold tabular text-muted">
+                        {rank}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        {market ? (
+                          <a
+                            href={`/markets/${market.slug}`}
+                            className="block truncate text-[12px] text-foreground hover:text-accent hover:underline"
+                            title={market.question}
+                          >
+                            {market.question}
+                          </a>
+                        ) : (
+                          <span
+                            className="block truncate font-mono text-[11px] text-muted-2"
+                            title={assetId}
+                          >
+                            {assetId.slice(0, 16)}…
+                          </span>
+                        )}
+                        <span className="text-[10px] text-muted-2">
+                          {stats.count} fills
+                        </span>
+                      </div>
+                      <span className="tabular text-[12px] font-semibold text-foreground">
+                        {fmtCompactUSD(stats.usdc)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ) : null}
+
+          {summary.topTraders.length > 0 ? (
+            <section className="rounded-md border border-border bg-surface/40 p-4">
+              <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-2">
+                Top builders · cumulative volume
+              </h2>
+              <ul className="divide-y divide-border/60">
+                {summary.topTraders.map(([trader, stats], i) => {
+                  const rank = i + 1;
+                  // Anonymize UUIDs (Polymarket internal IDs) to a short form;
+                  // if it's an address, link to the wallet detail page.
+                  const isAddr = /^0x[0-9a-fA-F]{40}$/.test(trader);
+                  return (
+                    <li key={trader} className="flex items-center gap-2 py-2">
+                      <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-surface-2 text-[10px] font-bold tabular text-muted">
+                        {rank}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        {isAddr ? (
+                          <a
+                            href={`/wallets/${trader}`}
+                            className="block truncate font-mono text-[11px] text-foreground hover:text-accent hover:underline"
+                            title={trader}
+                          >
+                            {trader.slice(0, 6)}…{trader.slice(-4)}
+                          </a>
+                        ) : (
+                          <span
+                            className="block truncate font-mono text-[11px] text-muted"
+                            title={trader}
+                          >
+                            {trader.slice(0, 8)}…
+                          </span>
+                        )}
+                        <span className="text-[10px] text-muted-2">
+                          {stats.count} fills
+                        </span>
+                      </div>
+                      <span className="tabular text-[12px] font-semibold text-foreground">
+                        {fmtCompactUSD(stats.usdc)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="overflow-x-auto rounded-md border border-border bg-surface/20">
         <BuilderTradesTable trades={state.trades.slice(0, 50)} />

@@ -50,20 +50,25 @@ export function useSettlementNotifications() {
   const session = useClobSession();
   const funder = session.funderAddress;
   const { positions } = useUserPositions(funder);
-  const bootstrappedRef = useRef(false);
+  // Keyed by funder address — when a user switches wallets, we need to
+  // re-bootstrap so the NEW wallet's existing redeemables don't all get
+  // emitted as fresh notifications. A shared boolean would let stale
+  // bootstrap state leak across wallets.
+  const bootstrappedFor = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!positions) return;
+    if (!positions || !funder) return;
     const seen = readSeen();
 
-    if (!bootstrappedRef.current) {
-      // First poll after the user connected — record what's already
-      // redeemable, don't notify.
+    if (bootstrappedFor.current !== funder) {
+      // First poll for this funder — record what's already redeemable,
+      // don't notify. Subsequent polls for the same funder go through
+      // the diff path below.
       for (const p of positions) {
         if (p.redeemable) seen.add(p.conditionId);
       }
       writeSeen(seen);
-      bootstrappedRef.current = true;
+      bootstrappedFor.current = funder;
       return;
     }
 
@@ -84,5 +89,5 @@ export function useSettlementNotifications() {
       });
     }
     if (changed) writeSeen(seen);
-  }, [positions]);
+  }, [positions, funder]);
 }

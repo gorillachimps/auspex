@@ -63,7 +63,26 @@ export function FirstVisitTour() {
     // Check the flag AFTER mount to avoid SSR hydration mismatch.
     try {
       const seen = window.localStorage.getItem(SEEN_KEY);
-      if (seen !== "1") setOpen(true);
+      if (seen === "1") return;
+      // Suppress on deep-link arrivals — if a user lands directly on a
+      // market detail page (typically via a shared link), they came for
+      // the market, not the welcome tour. Same for /wallets/[address],
+      // /embed/[slug], and other content-first destinations. The tour
+      // still fires on the home page and on landing pages like /welcome
+      // where orientation is the goal.
+      const path = window.location.pathname;
+      const isDeepLink =
+        path.startsWith("/markets/") ||
+        path.startsWith("/wallets/") ||
+        path.startsWith("/embed/");
+      if (isDeepLink) {
+        // Mark as seen so they don't get hit by it on a later navigation
+        // to the home page either — they've already had a session start
+        // with intent.
+        window.localStorage.setItem(SEEN_KEY, "1");
+        return;
+      }
+      setOpen(true);
     } catch {
       // ignore privacy-mode errors
     }

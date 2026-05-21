@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Link as LinkIcon, Share2 } from "lucide-react";
+import { Check, Code2, Link as LinkIcon, Share2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 type Props = {
@@ -9,6 +9,10 @@ type Props = {
   text: string;
   /** Absolute URL the share embeds / links to. */
   url: string;
+  /** When provided, enables a "Copy embed code" button that copies an
+   *  iframe snippet pointing at /embed/[slug]. Pass the same slug used by
+   *  the canonical market detail page. */
+  slug?: string;
 };
 
 /**
@@ -17,8 +21,9 @@ type Props = {
  * comes from the parent so it can include market-specific stats (e.g. distance
  * to trigger, implied %).
  */
-export function ShareButtons({ text, url }: Props) {
+export function ShareButtons({ text, url, slug }: Props) {
   const [copied, setCopied] = useState(false);
+  const [embedCopied, setEmbedCopied] = useState(false);
 
   const xHref = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
     text,
@@ -34,6 +39,21 @@ export function ShareButtons({ text, url }: Props) {
       setTimeout(() => setCopied(false), 1500);
     } catch {
       // ignore — some browsers block on insecure context
+    }
+  }
+
+  async function copyEmbed() {
+    if (!slug) return;
+    // 320×180 = 16:9 at "card" size — the canonical embed dimension that
+    // drops cleanly into Twitter/X cards and Substack post bodies.
+    const embedSrc = `https://auspex.to/embed/${slug}`;
+    const snippet = `<iframe src="${embedSrc}" width="320" height="180" frameborder="0" style="border-radius:8px;" title="Live odds on Auspex"></iframe>`;
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setEmbedCopied(true);
+      setTimeout(() => setEmbedCopied(false), 1800);
+    } catch {
+      // ignore
     }
   }
 
@@ -76,6 +96,27 @@ export function ShareButtons({ text, url }: Props) {
         )}
         <span className="sr-only">{copied ? "Copied" : "Copy link"}</span>
       </button>
+      {slug ? (
+        <button
+          type="button"
+          onClick={copyEmbed}
+          className={btnClass}
+          title={
+            embedCopied
+              ? "Embed code copied!"
+              : "Copy iframe code — drop the live odds card into any blog, Substack, or HTML page"
+          }
+        >
+          {embedCopied ? (
+            <Check className="h-3 w-3" aria-hidden="true" />
+          ) : (
+            <Code2 className="h-3 w-3" aria-hidden="true" />
+          )}
+          <span className="sr-only">
+            {embedCopied ? "Embed copied" : "Copy embed code"}
+          </span>
+        </button>
+      ) : null}
     </div>
   );
 }

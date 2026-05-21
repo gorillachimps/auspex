@@ -90,6 +90,7 @@ export default async function MarketDetailPage({ params }: Props) {
             <ShareButtons
               text={buildShareText(row)}
               url={`${process.env.NEXT_PUBLIC_SITE_URL ?? "https://auspex.to"}/markets/${row.slug}`}
+              slug={row.slug}
             />
           </div>
           <h1 className="mt-2 text-xl font-semibold leading-tight tracking-tight sm:text-2xl">

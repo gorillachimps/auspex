@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { TopNav } from "@/components/TopNav";
 import { Footer } from "@/components/Footer";
+import { WelcomeStatsBanner } from "@/components/WelcomeStatsBanner";
 
 export const metadata: Metadata = {
   title: "Welcome to Auspex — the prediction-market screener",
@@ -70,6 +71,7 @@ export default function WelcomePage() {
             <p className="mt-4 text-[12px] text-muted-2">
               No signup, no email collection. Your wallet signs everything.
             </p>
+            <WelcomeStatsBanner />
           </div>
         </section>
 

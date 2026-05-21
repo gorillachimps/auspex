@@ -13,6 +13,7 @@ import { ClobSessionProvider } from "@/lib/useClobSession";
 import { TabTitleBadge } from "@/components/TabTitleBadge";
 import { SettlementNotifications } from "@/components/SettlementNotifications";
 import { FirstVisitTour } from "@/components/FirstVisitTour";
+import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -27,6 +28,7 @@ export function Providers({ children }: { children: ReactNode }) {
           <TabTitleBadge />
           <SettlementNotifications />
           <FirstVisitTour />
+          <PwaInstallPrompt />
           {children}
         </ClobSessionProvider>
         <Toaster theme="dark" position="bottom-right" richColors />
