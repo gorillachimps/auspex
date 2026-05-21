@@ -63,10 +63,17 @@ export function OrdersView() {
       }
     }
 
+    function onOrderPlaced() {
+      if (timer) clearTimeout(timer);
+      if (session.client) load(session.client);
+    }
+    window.addEventListener("auspex:order-placed", onOrderPlaced);
+
     if (session.client) load(session.client);
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      window.removeEventListener("auspex:order-placed", onOrderPlaced);
     };
   }, [session.client]);
 

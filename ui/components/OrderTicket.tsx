@@ -427,6 +427,13 @@ export function OrderTicket({
         price: orderMode === "limit" ? price : marketFill?.avgPrice,
       });
       allowance.refresh();
+      // Tell /portfolio, /activity, /orders, and TotalBalance to re-poll
+      // immediately instead of waiting for their next 30-60s tick. Without
+      // this the user lands on /portfolio after a fill and sees stale data
+      // for up to half a minute.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("auspex:order-placed"));
+      }
       onClose();
     } catch (e) {
       const msg = (e as Error).message ?? "unknown error";

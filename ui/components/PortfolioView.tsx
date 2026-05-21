@@ -140,10 +140,19 @@ export function PortfolioView() {
       }
     }
 
+    // Listen for order-placed events from OrderTicket so a fresh fill
+    // surfaces here without waiting up to 30s for the next auto-poll.
+    function onOrderPlaced() {
+      if (timer) clearTimeout(timer);
+      load();
+    }
+    window.addEventListener("auspex:order-placed", onOrderPlaced);
+
     load();
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      window.removeEventListener("auspex:order-placed", onOrderPlaced);
     };
   }, [funder]);
 

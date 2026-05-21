@@ -89,10 +89,24 @@ export function useUserPositions(
       }
     }
 
+    // Listen for order-placed events from OrderTicket so consumers
+    // (TotalBalance, PositionCard, TabTitleBadge) see new fills without
+    // waiting up to 30s for the next auto-poll tick.
+    function onOrderPlaced() {
+      if (timer) clearTimeout(timer);
+      load();
+    }
+    if (typeof window !== "undefined") {
+      window.addEventListener("auspex:order-placed", onOrderPlaced);
+    }
+
     load();
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("auspex:order-placed", onOrderPlaced);
+      }
     };
   }, [funder]);
 

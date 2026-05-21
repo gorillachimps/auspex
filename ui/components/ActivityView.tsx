@@ -111,10 +111,17 @@ export function ActivityView() {
       }
     }
 
+    function onOrderPlaced() {
+      if (timer) clearTimeout(timer);
+      load();
+    }
+    window.addEventListener("auspex:order-placed", onOrderPlaced);
+
     load();
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      window.removeEventListener("auspex:order-placed", onOrderPlaced);
     };
   }, [funder]);
 
