@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { useClobSession } from "@/lib/useClobSession";
 import { useMarketLookup } from "@/lib/useMarketLookup";
+import { useUserPositions, type Position } from "@/lib/useUserPositions";
 import { placeMarketOrder, Side, tickToString } from "@/lib/polymarket";
 import { cn } from "@/lib/cn";
 import { csvFilename, downloadCsv, toCsv } from "@/lib/csv";
@@ -45,42 +46,7 @@ type SortKey =
   | "pnl"
   | "endDate";
 
-const REFRESH_MS = 30_000;
-const POSITIONS_HOST = "https://data-api.polymarket.com";
-
-type Position = {
-  proxyWallet: string;
-  asset: string;
-  conditionId: string;
-  size: number;
-  avgPrice: number;
-  initialValue: number;
-  currentValue: number;
-  cashPnl: number;
-  percentPnl: number;
-  totalBought: number;
-  realizedPnl: number;
-  curPrice: number;
-  redeemable: boolean;
-  mergeable: boolean;
-  title: string;
-  slug: string;
-  icon?: string;
-  eventSlug?: string;
-  outcome: string;
-  outcomeIndex: number;
-  endDate?: string;
-  negativeRisk?: boolean;
-};
-
-type State = {
-  positions: Position[] | null;
-  loading: boolean;
-  error: string | null;
-  fetchedAt: number | null;
-};
-
-const ZERO: State = { positions: null, loading: false, error: null, fetchedAt: null };
+// Position type + the shared polling store live in lib/useUserPositions.
 
 // All number/date formatting comes from lib/format. Aliases below map the
 // in-file shorthand we use in JSX to the canonical names — saves clutter
@@ -93,7 +59,12 @@ const fmtAgo = fmtAgoWithSuffix;
 export function PortfolioView() {
   const session = useClobSession();
   const funder = session.funderAddress;
-  const [state, setState] = useState<State>(ZERO);
+  // Positions come from the shared store (one poll per funder, fanned out to
+  // every consumer). `state` is a thin shim so the existing `state.positions`
+  // read sites don't need touching.
+  const { positions, loading, error, fetchedAt, refresh } =
+    useUserPositions(funder);
+  const state = { positions, loading, error, fetchedAt };
   // Default sort: best winners on top — what most traders want first.
   const [sortKey, setSortKey] = useState<SortKey>("pnl");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -131,53 +102,6 @@ export function PortfolioView() {
     setSortKey(next);
     setSortDir(next === "market" || next === "endDate" ? "asc" : "desc");
   }
-
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    async function load() {
-      if (!funder) {
-        setState(ZERO);
-        return;
-      }
-      setState((s) => ({ ...s, loading: true, error: null }));
-      try {
-        const url = `${POSITIONS_HOST}/positions?user=${funder}&sizeThreshold=0`;
-        const r = await fetch(url, { cache: "no-store" });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const data = await r.json();
-        if (cancelled) return;
-        const positions: Position[] = Array.isArray(data) ? data : [];
-        setState({ positions, loading: false, error: null, fetchedAt: Date.now() });
-      } catch (e) {
-        if (cancelled) return;
-        setState({
-          positions: null,
-          loading: false,
-          error: (e as Error).message,
-          fetchedAt: null,
-        });
-      } finally {
-        if (!cancelled) timer = setTimeout(load, REFRESH_MS);
-      }
-    }
-
-    // Listen for order-placed events from OrderTicket so a fresh fill
-    // surfaces here without waiting up to 30s for the next auto-poll.
-    function onOrderPlaced() {
-      if (timer) clearTimeout(timer);
-      load();
-    }
-    window.addEventListener("auspex:order-placed", onOrderPlaced);
-
-    load();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-      window.removeEventListener("auspex:order-placed", onOrderPlaced);
-    };
-  }, [funder]);
 
   const summary = useMemo(() => {
     if (!state.positions) return null;
@@ -526,28 +450,7 @@ export function PortfolioView() {
           </button>
           <button
             type="button"
-            onClick={() => {
-              setState((s) => ({ ...s, loading: true }));
-              // re-run effect by toggling: easiest is to reload-once via direct fetch
-              fetch(`${POSITIONS_HOST}/positions?user=${funder}&sizeThreshold=0`)
-                .then((r) => r.json())
-                .then((d) =>
-                  setState({
-                    positions: Array.isArray(d) ? d : [],
-                    loading: false,
-                    error: null,
-                    fetchedAt: Date.now(),
-                  }),
-                )
-                .catch((e) =>
-                  setState({
-                    positions: state.positions,
-                    loading: false,
-                    error: (e as Error).message,
-                    fetchedAt: state.fetchedAt,
-                  }),
-                );
-            }}
+            onClick={() => refresh()}
             disabled={state.loading}
             className="inline-flex items-center gap-1 rounded-md border border-border-strong bg-surface px-2 py-1 text-[11px] font-medium text-muted hover:bg-surface-2 hover:text-foreground disabled:opacity-50"
           >

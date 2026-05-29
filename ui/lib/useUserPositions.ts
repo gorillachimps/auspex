@@ -31,91 +31,169 @@ export type Position = {
   negativeRisk?: boolean;
 };
 
-type State = {
+export type PositionsState = {
   positions: Position[] | null;
   loading: boolean;
   error: string | null;
+  fetchedAt: number | null;
   refresh: () => void;
 };
 
 const NOOP = () => {};
+const EMPTY: PositionsState = {
+  positions: null,
+  loading: false,
+  error: null,
+  fetchedAt: null,
+  refresh: NOOP,
+};
 
 /**
- * Fetch all open positions for a Polymarket account (the proxy/funder wallet),
- * auto-refresh every 30s. Returns `positions: null` until the first fetch
- * completes — this distinguishes "loading" from "loaded, no positions".
+ * Module-level shared store keyed by funder address.
  *
- * Used by PortfolioView (full list) and PositionCard via
- * useUserMarketPositions (filtered to one market).
+ * Before this, every consumer (TotalBalance, useTabTitleBadge,
+ * useSettlementNotifications, each PositionCard via useUserMarketPositions,
+ * and PortfolioView's own inline copy) ran an independent 30s poll against
+ * /positions for the SAME wallet — 4-5 concurrent identical requests, and a
+ * thundering herd of refetches on every `auspex:order-placed`. Now there is
+ * exactly one poll per funder, fanned out to all subscribers. Mirrors the
+ * cache pattern in useMarketLookup.
+ */
+type StoreEntry = {
+  funder: `0x${string}`;
+  listeners: Set<() => void>;
+  timer: ReturnType<typeof setTimeout> | null;
+  inFlight: boolean;
+  /** Stable snapshot object — identity changes only when data changes, so
+   *  consuming components only re-render on real updates. */
+  snapshot: PositionsState;
+};
+
+const store = new Map<string, StoreEntry>();
+
+function keyFor(funder: string): string {
+  return funder.toLowerCase();
+}
+
+function emit(entry: StoreEntry, patch: Partial<PositionsState>) {
+  entry.snapshot = { ...entry.snapshot, ...patch };
+  for (const listener of entry.listeners) listener();
+}
+
+async function load(funder: `0x${string}`) {
+  const entry = store.get(keyFor(funder));
+  if (!entry) return;
+  if (entry.inFlight) return; // dedupe overlapping loads
+  entry.inFlight = true;
+  emit(entry, { loading: true, error: null });
+  try {
+    const url = `${POSITIONS_HOST}/positions?user=${funder}&sizeThreshold=0`;
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    const positions: Position[] = Array.isArray(data) ? data : [];
+    emit(entry, {
+      positions,
+      loading: false,
+      error: null,
+      fetchedAt: Date.now(),
+    });
+  } catch (e) {
+    // Keep the prior positions on error so the UI doesn't blank out.
+    emit(entry, { loading: false, error: (e as Error).message });
+  } finally {
+    entry.inFlight = false;
+    // Reschedule only while someone is still listening.
+    if (entry.listeners.size > 0) {
+      if (entry.timer) clearTimeout(entry.timer);
+      entry.timer = setTimeout(() => load(funder), REFRESH_MS);
+    }
+  }
+}
+
+// One global order-placed listener (not one per consumer). On a fresh fill,
+// reload every actively-subscribed funder immediately rather than waiting up
+// to 30s for the next tick.
+let orderListenerBound = false;
+function ensureOrderListener() {
+  if (orderListenerBound || typeof window === "undefined") return;
+  orderListenerBound = true;
+  window.addEventListener("auspex:order-placed", () => {
+    for (const entry of store.values()) {
+      if (entry.listeners.size > 0) {
+        if (entry.timer) clearTimeout(entry.timer);
+        load(entry.funder);
+      }
+    }
+  });
+}
+
+function subscribe(funder: `0x${string}`, listener: () => void): () => void {
+  ensureOrderListener();
+  const k = keyFor(funder);
+  let entry = store.get(k);
+  if (!entry) {
+    entry = {
+      funder,
+      listeners: new Set(),
+      timer: null,
+      inFlight: false,
+      snapshot: { ...EMPTY, refresh: () => load(funder) },
+    };
+    store.set(k, entry);
+  }
+  const wasIdle = entry.listeners.size === 0;
+  entry.listeners.add(listener);
+  // First subscriber (re)starts the poll loop. If a cached snapshot already
+  // exists from a previous mount, the subscriber sees it instantly and the
+  // fresh load refreshes it.
+  if (wasIdle) load(funder);
+  return () => {
+    const e = store.get(k);
+    if (!e) return;
+    e.listeners.delete(listener);
+    if (e.listeners.size === 0 && e.timer) {
+      clearTimeout(e.timer);
+      e.timer = null;
+    }
+  };
+}
+
+/**
+ * Subscribe to the shared positions store for a funder. Returns `positions:
+ * null` until the first fetch completes (distinguishes "loading" from
+ * "loaded, empty"). All callers for the same funder share one poll.
  */
 export function useUserPositions(
   funder: `0x${string}` | null | undefined,
-): State {
-  const [state, setState] = useState<State>({
-    positions: null,
-    loading: false,
-    error: null,
-    refresh: NOOP,
+): PositionsState {
+  const [snap, setSnap] = useState<PositionsState>(() => {
+    if (!funder) return EMPTY;
+    return store.get(keyFor(funder))?.snapshot ?? EMPTY;
   });
 
   useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    async function load() {
-      if (!funder) {
-        setState({ positions: null, loading: false, error: null, refresh: load });
-        return;
-      }
-      setState((s) => ({ ...s, loading: true, error: null, refresh: load }));
-      try {
-        const url = `${POSITIONS_HOST}/positions?user=${funder}&sizeThreshold=0`;
-        const r = await fetch(url, { cache: "no-store" });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const data = await r.json();
-        if (cancelled) return;
-        const positions: Position[] = Array.isArray(data) ? data : [];
-        setState({ positions, loading: false, error: null, refresh: load });
-      } catch (e) {
-        if (cancelled) return;
-        setState((s) => ({
-          positions: s.positions,
-          loading: false,
-          error: (e as Error).message,
-          refresh: load,
-        }));
-      } finally {
-        if (!cancelled) timer = setTimeout(load, REFRESH_MS);
-      }
+    if (!funder) {
+      setSnap(EMPTY);
+      return;
     }
-
-    // Listen for order-placed events from OrderTicket so consumers
-    // (TotalBalance, PositionCard, TabTitleBadge) see new fills without
-    // waiting up to 30s for the next auto-poll tick.
-    function onOrderPlaced() {
-      if (timer) clearTimeout(timer);
-      load();
-    }
-    if (typeof window !== "undefined") {
-      window.addEventListener("auspex:order-placed", onOrderPlaced);
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-      if (typeof window !== "undefined") {
-        window.removeEventListener("auspex:order-placed", onOrderPlaced);
-      }
+    const k = keyFor(funder);
+    const update = () => {
+      const e = store.get(k);
+      if (e) setSnap(e.snapshot);
     };
+    const unsub = subscribe(funder, update);
+    update(); // sync the freshest snapshot on (re)mount
+    return unsub;
   }, [funder]);
 
-  return state;
+  return snap;
 }
 
 /** Filtered view: only positions whose `asset` matches one of the given token
  *  IDs. Useful on a market detail page where you want this market's entries
- *  for the PositionCard. */
+ *  for the PositionCard. Shares the same underlying poll as every other
+ *  consumer of useUserPositions for this funder. */
 export function useUserMarketPositions(
   funder: `0x${string}` | null | undefined,
   tokenIds: (string | null | undefined)[],
