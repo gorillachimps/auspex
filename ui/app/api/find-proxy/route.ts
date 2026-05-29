@@ -53,12 +53,72 @@ type Log = {
   blockNumber: string;
 };
 
+/** Plain result the GET wrapper turns into a NextResponse and (maybe) caches. */
+type Result = { status: number; body: unknown; ttlMs: number };
+
+// In-memory response cache. Proxy ownership is immutable once a deposit wallet
+// is deployed, so a found result is safe to cache for a long time; a "not found
+// yet" is cached briefly in case the user is mid-onboarding. NOTE: on Vercel
+// serverless this Map is per-warm-instance and ephemeral — that's fine, it
+// still collapses the repeated lookups a single onboarding session makes and
+// blunts a scraper hitting one instance. Bounded to CACHE_MAX entries.
+const cache = new Map<string, { result: Result; expires: number }>();
+const CACHE_MAX = 1000;
+
+function cacheGet(key: string): Result | null {
+  const hit = cache.get(key);
+  if (!hit) return null;
+  if (Date.now() > hit.expires) {
+    cache.delete(key);
+    return null;
+  }
+  return hit.result;
+}
+
+function cacheSet(key: string, result: Result) {
+  if (result.ttlMs <= 0) return;
+  if (cache.size >= CACHE_MAX) {
+    // Map preserves insertion order; drop the oldest entry.
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(key, { result, expires: Date.now() + result.ttlMs });
+}
+
+// Best-effort per-IP fixed-window rate limit. Same serverless caveat as the
+// cache: per-instance, but enough to stop a single client from hammering the
+// shared Etherscan quota.
+const RATE_WINDOW_MS = 60_000;
+const RATE_MAX = 30;
+const hits = new Map<string, { count: number; windowStart: number }>();
+
+function rateLimited(ip: string): boolean {
+  const now = Date.now();
+  const rec = hits.get(ip);
+  if (!rec || now - rec.windowStart > RATE_WINDOW_MS) {
+    hits.set(ip, { count: 1, windowStart: now });
+    return false;
+  }
+  rec.count += 1;
+  return rec.count > RATE_MAX;
+}
+
 export async function GET(req: NextRequest) {
   const apiKey = process.env.POLYGONSCAN_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
       { error: "Auto-detect not configured on this deployment." },
       { status: 503 },
+    );
+  }
+
+  const ip =
+    (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() ||
+    "unknown";
+  if (rateLimited(ip)) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded — try again in a minute." },
+      { status: 429 },
     );
   }
 
@@ -69,17 +129,40 @@ export async function GET(req: NextRequest) {
   // that the connected wallet is actually authorised on the pasted proxy.
   const proxyParam = req.nextUrl.searchParams.get("proxy");
 
+  const cacheKey = eoa
+    ? `f:${eoa.toLowerCase()}`
+    : proxyParam
+      ? `r:${proxyParam.toLowerCase()}`
+      : null;
+
+  if (cacheKey) {
+    const cached = cacheGet(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached.body, { status: cached.status });
+    }
+  }
+
+  let result: Result;
   if (eoa) {
-    return forwardLookup(eoa, apiKey);
+    result = await forwardLookup(eoa, apiKey);
+  } else if (proxyParam) {
+    result = await reverseLookup(proxyParam, apiKey);
+  } else {
+    result = {
+      status: 400,
+      body: { error: "Pass either ?eoa=… (forward) or ?proxy=… (reverse)." },
+      ttlMs: 0,
+    };
   }
-  if (proxyParam) {
-    return reverseLookup(proxyParam, apiKey);
-  }
-  return NextResponse.json(
-    { error: "Pass either ?eoa=… (forward) or ?proxy=… (reverse)." },
-    { status: 400 },
-  );
+
+  if (cacheKey) cacheSet(cacheKey, result);
+  return NextResponse.json(result.body, { status: result.status });
 }
+
+// TTLs: found mappings are immutable → cache long; misses → short (user may be
+// onboarding); validation/upstream errors → never cache.
+const TTL_FOUND = 60 * 60 * 1000; // 1 h
+const TTL_MISS = 60 * 1000; // 1 min
 
 function buildEtherscanUrl(apiKey: string): URL {
   // Etherscan V2 multi-chain endpoint. Polygonscan's V1 endpoint
@@ -98,9 +181,9 @@ function buildEtherscanUrl(apiKey: string): URL {
   return url;
 }
 
-async function forwardLookup(eoa: string, apiKey: string) {
+async function forwardLookup(eoa: string, apiKey: string): Promise<Result> {
   if (!/^0x[0-9a-fA-F]{40}$/.test(eoa)) {
-    return NextResponse.json({ error: "Invalid EOA address." }, { status: 400 });
+    return { status: 400, body: { error: "Invalid EOA address." }, ttlMs: 0 };
   }
 
   const eoaTopic = `0x${eoa.slice(2).toLowerCase().padStart(64, "0")}`;
@@ -112,40 +195,38 @@ async function forwardLookup(eoa: string, apiKey: string) {
 
   try {
     const logs = await fetchLogs(url);
-    if (logs == null) {
-      return NextResponse.json({ proxy: null });
-    }
-    if (logs.length === 0) {
-      return NextResponse.json({ proxy: null });
+    if (logs == null || logs.length === 0) {
+      return { status: 200, body: { proxy: null }, ttlMs: TTL_MISS };
     }
 
     // Sort by block number descending so we return the most recently-deployed
     // proxy if the EOA has more than one. Block numbers come back as hex strings.
-    logs.sort(
-      (a, b) =>
-        parseInt(b.blockNumber, 16) - parseInt(a.blockNumber, 16),
-    );
+    logs.sort((a, b) => parseInt(b.blockNumber, 16) - parseInt(a.blockNumber, 16));
 
     const proxy = logs[0].address;
     if (!proxy || !/^0x[0-9a-fA-F]{40}$/.test(proxy)) {
-      return NextResponse.json({ proxy: null });
+      return { status: 200, body: { proxy: null }, ttlMs: TTL_MISS };
     }
 
-    return NextResponse.json({
-      proxy,
-      count: logs.length,
-      // Marker so the client knows which factory the proxy belongs to
-      // (helps if we ever support multiple deposit-wallet versions).
-      factory: FACTORY,
-    });
+    return {
+      status: 200,
+      body: {
+        proxy,
+        count: logs.length,
+        // Marker so the client knows which factory the proxy belongs to
+        // (helps if we ever support multiple deposit-wallet versions).
+        factory: FACTORY,
+      },
+      ttlMs: TTL_FOUND,
+    };
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    return { status: 500, body: { error: (e as Error).message }, ttlMs: 0 };
   }
 }
 
-async function reverseLookup(proxy: string, apiKey: string) {
+async function reverseLookup(proxy: string, apiKey: string): Promise<Result> {
   if (!/^0x[0-9a-fA-F]{40}$/.test(proxy)) {
-    return NextResponse.json({ error: "Invalid proxy address." }, { status: 400 });
+    return { status: 400, body: { error: "Invalid proxy address." }, ttlMs: 0 };
   }
 
   const url = buildEtherscanUrl(apiKey);
@@ -155,7 +236,7 @@ async function reverseLookup(proxy: string, apiKey: string) {
   try {
     const logs = await fetchLogs(url);
     if (logs == null || logs.length === 0) {
-      return NextResponse.json({ owners: [] });
+      return { status: 200, body: { owners: [] }, ttlMs: TTL_MISS };
     }
 
     // Each OwnershipTransferred(0x0, newOwner) event lists one owner in
@@ -171,12 +252,13 @@ async function reverseLookup(proxy: string, apiKey: string) {
       }
     }
 
-    return NextResponse.json({
-      owners: Array.from(owners),
-      count: owners.size,
-    });
+    return {
+      status: 200,
+      body: { owners: Array.from(owners), count: owners.size },
+      ttlMs: TTL_FOUND,
+    };
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    return { status: 500, body: { error: (e as Error).message }, ttlMs: 0 };
   }
 }
 
