@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { polymarketMarketWs, type WsStatus } from "./polymarketWs";
 import { CLOB_HOST } from "./polymarket";
 
@@ -183,7 +183,10 @@ export function useLiveBook(tokenId: string | null | undefined): LiveBook | null
 /** Just the live mid (bid+ask)/2 for a token. */
 export function useLiveMid(tokenId: string | null | undefined): number | null {
   const book = useLiveBook(tokenId);
-  return useMemo(() => midFromBook(book), [book?.version, book]);
+  // `book` is a fresh object on every update (applyPriceChanges/bookFromBidsAsks
+  // never mutate in place), so its identity alone is the correct, sufficient
+  // dependency. The extra `book?.version` dep was redundant.
+  return useMemo(() => midFromBook(book), [book]);
 }
 
 /** Most recent matched trade for a token. */
@@ -242,12 +245,14 @@ export function useLiveMidMap(tokenIds: string[]): Map<string, number> {
       setMids(new Map());
       return;
     }
+    let cancelled = false;
     // Per-token book state lives in this closure, NOT in component state, so
     // we don't trigger a re-render on every price_change event — only when a
     // mid actually changes.
     const localBooks = new Map<string, { bids: Map<string, string>; asks: Map<string, string> }>();
 
     function recomputeMid(id: string) {
+      if (cancelled) return;
       const b = localBooks.get(id);
       if (!b) return;
       // Best bid = highest price in bids; best ask = lowest in asks.
@@ -302,7 +307,10 @@ export function useLiveMidMap(tokenIds: string[]): Map<string, number> {
         recomputeMid(id);
       },
     });
-    return unsub;
+    return () => {
+      cancelled = true;
+      unsub();
+    };
   }, [depKey]);
 
   return mids;
@@ -357,6 +365,14 @@ export function useWhaleFeed(
     () => [...tokenInfo.keys()].sort().join(","),
     [tokenInfo],
   );
+  // Read the latest tokenInfo via a ref so the subscribe effect does NOT
+  // re-run on every parent re-render that rebuilds the Map identity (which
+  // happens on each screener data refresh). The handler reads current
+  // metadata at event time; only the token SET (depKey) should re-subscribe.
+  const tokenInfoRef = useRef(tokenInfo);
+  useEffect(() => {
+    tokenInfoRef.current = tokenInfo;
+  }, [tokenInfo]);
 
   useEffect(() => {
     const ids = depKey ? depKey.split(",") : [];
@@ -364,10 +380,12 @@ export function useWhaleFeed(
       setFeed([]);
       return;
     }
+    let cancelled = false;
     const unsub = polymarketMarketWs.subscribe(ids, {
       onLastTrade: (e) => {
+        if (cancelled) return;
         const assetId = e.asset_id as string;
-        const info = tokenInfo.get(assetId);
+        const info = tokenInfoRef.current.get(assetId);
         if (!info) return;
         const price = parseFloat(e.price as string);
         const size = parseFloat(e.size as string);
@@ -400,8 +418,11 @@ export function useWhaleFeed(
         });
       },
     });
-    return unsub;
-  }, [depKey, thresholdUsd, maxItems, tokenInfo]);
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [depKey, thresholdUsd, maxItems]);
 
   return feed;
 }
@@ -433,8 +454,10 @@ export function useTradePressure(
       return;
     }
     setTrades([]);
+    let cancelled = false;
     const unsub = polymarketMarketWs.subscribe([tokenId], {
       onLastTrade: (e) => {
+        if (cancelled) return;
         const price = parseFloat(e.price as string);
         const size = parseFloat(e.size as string);
         const notional = price * size;
@@ -456,7 +479,22 @@ export function useTradePressure(
         });
       },
     });
-    return unsub;
+    // Prune aged-out trades on a slow tick so a quiet market's bar doesn't
+    // keep showing volume that has actually left the window. Only changes
+    // state (→ re-render) when something genuinely expired.
+    const prune = setInterval(() => {
+      if (cancelled) return;
+      setTrades((prev) => {
+        const cutoff = Date.now() - windowMs;
+        const next = prev.filter((t) => t.ts >= cutoff);
+        return next.length === prev.length ? prev : next;
+      });
+    }, 5_000);
+    return () => {
+      cancelled = true;
+      clearInterval(prune);
+      unsub();
+    };
   }, [tokenId, windowMs]);
 
   // Trim on render so the window stays current even between events.

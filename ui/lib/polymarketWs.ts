@@ -139,15 +139,26 @@ class PolymarketMarketWS {
     }
     this.ws = socket;
 
+    // Every handler gates on `this.ws === socket`. When close() (or a
+    // reconnect) supersedes this socket, it nulls/replaces this.ws; the old
+    // socket's async onclose then no-ops instead of stomping the new socket's
+    // status to "reconnecting" and scheduling a redundant reconnect. Without
+    // this guard, a rapid mount→unmount→mount (route flip) produces spurious
+    // "reconnecting" status pulses and wasted timers.
     socket.onopen = () => {
+      if (this.ws !== socket) return;
       this.setStatus("open");
       this.reconnectAttempt = 0;
       const allAssets = [...this.refs.keys()];
       if (allAssets.length > 0) this.sendSubscribe(allAssets);
       this.startHeartbeat();
     };
-    socket.onmessage = (ev) => this.handleMessage(ev.data);
+    socket.onmessage = (ev) => {
+      if (this.ws !== socket) return;
+      this.handleMessage(ev.data);
+    };
     socket.onclose = () => {
+      if (this.ws !== socket) return; // superseded socket — ignore
       this.stopHeartbeat();
       this.ws = null;
       if (this.refs.size > 0) {
@@ -265,6 +276,12 @@ class PolymarketMarketWS {
       clearTimeout(this.batchTimer);
       this.batchTimer = null;
     }
+    // Drop any not-yet-flushed subscribe batch. Otherwise a later subscribe()
+    // would flush these now-zero-ref asset ids alongside the new ones, and
+    // (since Polymarket has no unsubscribe verb) we'd receive + ignore events
+    // for assets nobody is subscribed to — wasted bandwidth that defeats the
+    // ref-counting intent.
+    this.pendingSubscribeBatch.clear();
     if (this.ws) {
       try {
         this.ws.close();
