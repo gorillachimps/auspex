@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { usePolledResource } from "./usePolledResource";
 import type { Trade } from "./walletPnl";
 
 const HOST = "https://data-api.polymarket.com";
@@ -23,68 +23,40 @@ type State = {
  * data-api `/trades?user=…&limit=500&offset=…` until the response is short
  * or we hit the page cap. Auto-refreshes every minute. `trades: null` means
  * still loading the first page — distinguishes loading from empty.
+ *
+ * Built on the shared usePolledResource (interval + cancellation + keep-prev-
+ * on-error are handled there); this hook just supplies the paginating fetcher.
  */
 export function useWalletTrades(
   proxy: `0x${string}` | null | undefined,
 ): State {
-  const [state, setState] = useState<State>({
-    trades: null,
-    loading: false,
-    error: null,
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    async function load() {
-      if (!proxy) {
-        setState({ trades: null, loading: false, error: null });
-        return;
-      }
-      setState((s) => ({ ...s, loading: true, error: null }));
+  const { data, loading, error } = usePolledResource<Trade[]>(
+    async (cancelled) => {
       const accumulator: Trade[] = [];
-      try {
-        for (let page = 0; page < MAX_PAGES; page++) {
-          const offset = page * PAGE_LIMIT;
-          const url = `${HOST}/trades?user=${proxy}&limit=${PAGE_LIMIT}&offset=${offset}`;
-          const r = await fetch(url, { cache: "no-store" });
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          const data: unknown = await r.json();
-          if (cancelled) return;
-          // Validate shape before subscripting. Distinguishes "wallet has
-          // no trades" (empty array) from "API returned something
-          // unexpected" (anything else) — the latter must surface as an
-          // error, not silently become an empty list.
-          if (!Array.isArray(data)) {
-            throw new Error(
-              "Unexpected response shape from /trades (expected array)",
-            );
-          }
-          if (data.length === 0) break;
-          accumulator.push(...(data as Trade[]));
-          if (data.length < PAGE_LIMIT) break;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const offset = page * PAGE_LIMIT;
+        const url = `${HOST}/trades?user=${proxy}&limit=${PAGE_LIMIT}&offset=${offset}`;
+        const r = await fetch(url, { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const json: unknown = await r.json();
+        if (cancelled()) return accumulator;
+        // Validate shape before subscripting. Distinguishes "wallet has no
+        // trades" (empty array) from "API returned something unexpected"
+        // (anything else) — the latter must surface as an error, not silently
+        // become an empty list.
+        if (!Array.isArray(json)) {
+          throw new Error(
+            "Unexpected response shape from /trades (expected array)",
+          );
         }
-        if (cancelled) return;
-        setState({ trades: accumulator, loading: false, error: null });
-      } catch (e) {
-        if (cancelled) return;
-        setState((s) => ({
-          trades: s.trades, // preserve any previous successful fetch
-          loading: false,
-          error: (e as Error).message,
-        }));
-      } finally {
-        if (!cancelled) timer = setTimeout(load, REFRESH_MS);
+        if (json.length === 0) break;
+        accumulator.push(...(json as Trade[]));
+        if (json.length < PAGE_LIMIT) break;
       }
-    }
+      return accumulator;
+    },
+    { intervalMs: REFRESH_MS, enabled: !!proxy, deps: [proxy] },
+  );
 
-    load();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [proxy]);
-
-  return state;
+  return { trades: data, loading, error };
 }
