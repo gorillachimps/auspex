@@ -15,6 +15,7 @@ import { PriceHistoryChart } from "@/components/PriceHistoryChart";
 import { RecentTradesView } from "@/components/RecentTradesView";
 import { TradeSizeDistribution } from "@/components/TradeSizeDistribution";
 import { ShareButtons } from "@/components/ShareButtons";
+import { TriggerAlertButton } from "@/components/TriggerAlertButton";
 import { DisqusComments } from "@/components/DisqusComments";
 import { cn } from "@/lib/cn";
 import { getMarketBySlug } from "@/lib/data";
@@ -87,11 +88,19 @@ export default async function MarketDetailPage({ params }: Props) {
                 {fmtSourceLabel(row.source, row.pair)}
               </span>
             </div>
-            <ShareButtons
-              text={buildShareText(row)}
-              url={`${process.env.NEXT_PUBLIC_SITE_URL ?? "https://auspex.to"}/markets/${row.slug}`}
-              slug={row.slug}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <TriggerAlertButton
+                marketId={row.id}
+                slug={row.slug}
+                question={row.question}
+                live={row.liveState === "live"}
+              />
+              <ShareButtons
+                text={buildShareText(row)}
+                url={`${process.env.NEXT_PUBLIC_SITE_URL ?? "https://auspex.to"}/markets/${row.slug}`}
+                slug={row.slug}
+              />
+            </div>
           </div>
           <h1 className="mt-2 text-xl font-semibold leading-tight tracking-tight sm:text-2xl">
             {row.question}

@@ -12,8 +12,28 @@ import { wagmiConfig } from "@/lib/wagmi";
 import { ClobSessionProvider } from "@/lib/useClobSession";
 import { TabTitleBadge } from "@/components/TabTitleBadge";
 import { SettlementNotifications } from "@/components/SettlementNotifications";
+import { TriggerAlertsWatcher } from "@/components/TriggerAlertsWatcher";
 import { FirstVisitTour } from "@/components/FirstVisitTour";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
+
+/**
+ * App-wide, render-mostly-null widgets that must mount on every page
+ * regardless of whether Privy is configured. Kept in one place so the two
+ * provider branches below can't drift — previously SettlementNotifications,
+ * FirstVisitTour, and PwaInstallPrompt were mounted ONLY in the non-Privy
+ * branch, so in production (Privy configured) they silently never ran.
+ */
+function GlobalChrome() {
+  return (
+    <>
+      <TabTitleBadge />
+      <SettlementNotifications />
+      <TriggerAlertsWatcher />
+      <FirstVisitTour />
+      <PwaInstallPrompt />
+    </>
+  );
+}
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -25,10 +45,7 @@ export function Providers({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
         <ClobSessionProvider>
-          <TabTitleBadge />
-          <SettlementNotifications />
-          <FirstVisitTour />
-          <PwaInstallPrompt />
+          <GlobalChrome />
           {children}
         </ClobSessionProvider>
         <Toaster theme="dark" position="bottom-right" richColors />
@@ -53,7 +70,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <WagmiProvider config={wagmiConfig}>
           <ClobSessionProvider>
-            <TabTitleBadge />
+            <GlobalChrome />
             {children}
           </ClobSessionProvider>
           <Toaster theme="dark" position="bottom-right" richColors />
