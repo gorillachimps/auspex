@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Activity, ExternalLink, Loader2 } from "lucide-react";
+import { Activity, Copy, ExternalLink, Loader2 } from "lucide-react";
 import {
   useFollowedActivityFeed,
   type ActivityTrade,
@@ -138,6 +138,16 @@ function Row({ trade, label }: { trade: ActivityTrade; label: string }) {
       <span className="shrink-0 text-[10px] tabular-nums text-muted-2">
         {fmtRelative(trade.timestamp)}
       </span>
+      {trade.side === "BUY" && trade.slug && trade.outcome ? (
+        <a
+          href={`/markets/${trade.slug}?copy=${trade.outcome.toLowerCase()}`}
+          className="shrink-0 inline-flex items-center gap-1 rounded-md border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent hover:bg-accent/20"
+          title={`Open a Buy ${trade.outcome} ticket on this market`}
+        >
+          <Copy className="h-2.5 w-2.5" aria-hidden="true" />
+          Copy
+        </a>
+      ) : null}
       {trade.transactionHash ? (
         <a
           href={`https://polygonscan.com/tx/${trade.transactionHash}`}

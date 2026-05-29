@@ -33,7 +33,10 @@ import { summarizeRules } from "@/lib/rules";
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ slug: string }> };
+type Props = {
+  params: Promise<{ slug: string }>;
+  searchParams?: Promise<{ copy?: string }>;
+};
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
@@ -45,8 +48,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function MarketDetailPage({ params }: Props) {
+export default async function MarketDetailPage({ params, searchParams }: Props) {
   const { slug } = await params;
+  const { copy } = (await searchParams) ?? {};
+  // ?copy=yes|no auto-opens the buy ticket (the follow-feed "copy this fill"
+  // deep link). Anything else is ignored.
+  const autoOpenOutcome = copy === "yes" || copy === "no" ? copy : null;
   const row = await getMarketBySlug(slug);
   if (!row) notFound();
 
@@ -178,7 +185,7 @@ export default async function MarketDetailPage({ params }: Props) {
           </div>
 
           <div className="mt-6">
-            <BuyPanel market={row} />
+            <BuyPanel market={row} autoOpenOutcome={autoOpenOutcome} />
           </div>
 
           <div className="mt-4">

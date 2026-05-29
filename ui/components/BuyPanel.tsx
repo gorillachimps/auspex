@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { fmtImpliedPct } from "@/lib/format";
@@ -11,6 +11,11 @@ import { OrderTicket } from "./OrderTicket";
 
 type Props = {
   market: TableRow;
+  /** When set (via the market URL's ?copy=yes|no), auto-open the buy ticket
+   *  for that outcome once on mount. Powers "copy this fill" from the follow
+   *  feed — routes the user straight into a pre-filled ticket. Never sizes or
+   *  submits anything; the user still chooses the amount and signs. */
+  autoOpenOutcome?: "yes" | "no" | null;
 };
 
 /**
@@ -27,19 +32,32 @@ type Props = {
  * appears below this panel. Keeping the entry points split keeps the
  * UI honest about which direction you're trading.
  */
-export function BuyPanel({ market }: Props) {
+export function BuyPanel({ market, autoOpenOutcome }: Props) {
   const liveYesMid = useLiveMid(market.tokenYes);
   const session = useClobSession();
   const [ticket, setTicket] = useState<{ outcome: "yes" | "no" } | null>(null);
 
   const yesPrice = liveYesMid ?? market.impliedYes ?? null;
   const noPrice = yesPrice != null ? 1 - yesPrice : null;
+  const settled = !!market.endDate && Date.parse(market.endDate) <= Date.now();
   const disabled =
     !market.tokenYes || !market.tokenNo || session.status === "disabled";
 
+  // "Copy this fill": open the ticket once on mount for the outcome named in
+  // the URL. Guarded by a ref so closing the modal (or a re-render) doesn't
+  // re-open it. Skipped if the market isn't tradable/settled.
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (autoOpenedRef.current) return;
+    if (!autoOpenOutcome) return;
+    if (disabled || settled) return;
+    autoOpenedRef.current = true;
+    setTicket({ outcome: autoOpenOutcome });
+  }, [autoOpenOutcome, disabled, settled]);
+
   // For settled markets, hide the panel entirely — no one should be
   // placing new positions in a market that's already resolving.
-  if (market.endDate && Date.parse(market.endDate) <= Date.now()) {
+  if (settled) {
     return null;
   }
 
