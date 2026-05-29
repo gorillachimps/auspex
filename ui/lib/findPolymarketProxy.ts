@@ -10,7 +10,9 @@ export async function findPolymarketProxy(
   eoa: string,
 ): Promise<{ proxy: `0x${string}` | null; count?: number }> {
   try {
-    const r = await fetch(`/api/find-proxy?eoa=${eoa}`, { cache: "no-store" });
+    const r = await fetch(`/api/find-proxy?eoa=${encodeURIComponent(eoa)}`, {
+      cache: "no-store",
+    });
     if (!r.ok) return { proxy: null };
     const data = (await r.json()) as {
       proxy: string | null;
@@ -38,7 +40,7 @@ export async function findProxyOwners(
   proxy: string,
 ): Promise<{ owners: `0x${string}`[]; available: boolean }> {
   try {
-    const r = await fetch(`/api/find-proxy?proxy=${proxy}`, {
+    const r = await fetch(`/api/find-proxy?proxy=${encodeURIComponent(proxy)}`, {
       cache: "no-store",
     });
     if (r.status === 503) {

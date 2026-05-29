@@ -289,6 +289,13 @@ function useClobSessionState(): ClobSession {
   // available, otherwise runs the derivation + build sequence and caches the
   // result. Idempotent across concurrent calls thanks to deriveInFlight.
   const deriveInFlight = useRef<Promise<ClobClient> | null>(null);
+  // Generation token: bumped whenever the wallet/funder changes (the reset
+  // effect below). A derivation captures the generation it started under and
+  // refuses to commit its result if it's been superseded — otherwise an
+  // in-flight derive that started under funder A could resolve AFTER the user
+  // switched to funder B and call setClient(clientBoundToA) + ready, signing
+  // subsequent orders against the wrong account.
+  const deriveGen = useRef(0);
   const ensureClient = useMemo(
     () => async (): Promise<ClobClient> => {
       if (client) return client;
@@ -300,25 +307,47 @@ function useClobSessionState(): ClobSession {
       }
       setStatus("deriving");
       setError(null);
+      const gen = deriveGen.current;
+      const capturedWallet = walletClient;
+      const capturedFunder = funder;
+      const stale = () => deriveGen.current !== gen;
       const promise = (async () => {
         try {
-          const creds = await ensureCreds(walletClient, eoa, funder);
+          const creds = await ensureCreds(capturedWallet, eoa, capturedFunder);
+          // Bail if the wallet/funder changed while we were signing — do not
+          // build or surface a client bound to a now-stale funder.
+          if (stale()) {
+            throw new Error(
+              "Account changed during authentication — please retry.",
+            );
+          }
           const c = buildClobClient({
-            walletClient,
-            funderAddress: funder,
+            walletClient: capturedWallet,
+            funderAddress: capturedFunder,
             creds,
           });
+          if (stale()) {
+            throw new Error(
+              "Account changed during authentication — please retry.",
+            );
+          }
           setClient(c);
           setStatus("ready");
           return c;
         } catch (e) {
-          const msg = (e as Error).message ?? "auth failed";
-          setError(msg);
-          setStatus("error");
-          setClient(null);
+          // Only clobber session state if this derivation is still current; a
+          // superseded one must not stomp the new session's status/error.
+          if (!stale()) {
+            const msg = (e as Error).message ?? "auth failed";
+            setError(msg);
+            setStatus("error");
+            setClient(null);
+          }
           throw e;
         } finally {
-          deriveInFlight.current = null;
+          // Don't clear a newer in-flight derive that a fresh ensureClient
+          // may have installed after this one was superseded.
+          if (!stale()) deriveInFlight.current = null;
         }
       })();
       deriveInFlight.current = promise;
@@ -330,9 +359,11 @@ function useClobSessionState(): ClobSession {
   // Reset the cached client whenever the connecting wallet changes, the
   // funder changes, or refresh is called. This forces a fresh derive on the
   // next ensureClient call — matters when the user switches wallets mid-session.
+  // Bumping deriveGen invalidates any derivation still in flight.
   useEffect(() => {
     setClient(null);
     deriveInFlight.current = null;
+    deriveGen.current += 1;
   }, [walletClient, funder, refreshTick]);
 
   return useMemo(

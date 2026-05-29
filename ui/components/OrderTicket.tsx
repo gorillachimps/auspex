@@ -216,7 +216,9 @@ export function OrderTicket({
       setConfirmingLargeMarket(false);
       if (initialOrderMode === "market" && maxShares != null && maxShares > 0) {
         // Close-flow: pre-fill the FULL position size so one click sells it.
-        setSizeStr(maxShares.toFixed(2));
+        // Floor to 2 decimals so we never prefill MORE than the user holds
+        // (a dust holding rounded up would be rejected by Polymarket).
+        setSizeStr((Math.floor(maxShares * 100) / 100).toFixed(2));
       } else if (side === "buy") {
         // Buy flow: pre-fill a small starter so users can submit in one click.
         // $5 matches the convention of "smallest meaningful test trade" and
@@ -230,6 +232,17 @@ export function OrderTicket({
       }
     }
   }, [open, market, initialOutcome, initialOrderMode, maxShares]);
+
+  // Re-arm the large-market confirm gate whenever the user edits the size,
+  // outcome, or order mode after arming it. Without this, clicking "Review"
+  // (which sets confirmingLargeMarket=true) and THEN bumping the size larger
+  // turns the button straight to "Confirm" — the second click would fire the
+  // new, bigger order immediately, defeating the double-click safety the gate
+  // exists to provide. (The open-reset effect above already covers fresh
+  // opens; this covers in-session edits.)
+  useEffect(() => {
+    setConfirmingLargeMarket(false);
+  }, [sizeStr, outcome, orderMode, side]);
 
   useEffect(() => {
     if (!open) return;
@@ -245,6 +258,14 @@ export function OrderTicket({
 
   const price = parseFloat(priceStr);
   const sizeInput = parseFloat(sizeStr);
+
+  // Sell cap = a 2-decimal FLOOR of holdings. Never round UP past what the
+  // user actually holds: a dust position like 0.099999 rounded to "0.10"
+  // exceeds the balance and Polymarket rejects the sell. Floor leaves at most
+  // a sub-cent sliver unsold, which is the safe direction. Used for the Max
+  // button, the close-flow prefill, and the over-holdings error gate.
+  const sellCap =
+    maxShares != null ? Math.floor(maxShares * 100) / 100 : undefined;
 
   // LIMIT-order projection
   // BUY: user types USD, shares = USD / price.
@@ -309,9 +330,9 @@ export function OrderTicket({
             `Resulting notional is $${limitNotionalUsd.toFixed(4)} — minimum is $1.`,
           );
         }
-        if (maxShares != null && sizeInput > maxShares + 1e-6) {
+        if (sellCap != null && sizeInput > sellCap + 1e-6) {
           list.push(
-            `You only hold ${maxShares.toFixed(2)} ${outcome.toUpperCase()} shares.`,
+            `You only hold ${sellCap.toFixed(2)} ${outcome.toUpperCase()} shares.`,
           );
         }
       }
@@ -322,9 +343,9 @@ export function OrderTicket({
       } else if (side === "buy" && sizeInput < 1) {
         list.push("Minimum order is $1.");
       }
-      if (side === "sell" && maxShares != null && sizeInput > maxShares + 1e-6) {
+      if (side === "sell" && sellCap != null && sizeInput > sellCap + 1e-6) {
         list.push(
-          `You only hold ${maxShares.toFixed(2)} ${outcome.toUpperCase()} shares.`,
+          `You only hold ${sellCap.toFixed(2)} ${outcome.toUpperCase()} shares.`,
         );
       }
       if (marketFill) {
@@ -345,7 +366,7 @@ export function OrderTicket({
     tickNumeric,
     tickSize,
     side,
-    maxShares,
+    sellCap,
     limitNotionalUsd,
     outcome,
     marketFill,
@@ -633,7 +654,7 @@ export function OrderTicket({
                 <SellSizeInput
                   value={sizeStr}
                   onChange={setSizeStr}
-                  maxShares={maxShares}
+                  maxShares={sellCap}
                 />
               )}
             </div>
@@ -701,7 +722,7 @@ export function OrderTicket({
                 <SellSizeInput
                   value={sizeStr}
                   onChange={setSizeStr}
-                  maxShares={maxShares}
+                  maxShares={sellCap}
                 />
               )}
               {side === "buy" ? (

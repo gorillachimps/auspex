@@ -61,8 +61,18 @@ export function useBalanceAllowance(
             allowances[spender.toLowerCase()] = BigInt(0);
           }
         }
+        // Guard the balance parse the same way the per-allowance loop above
+        // is guarded: a non-integer/empty balance string from the API would
+        // otherwise throw inside load(), null the balance, and silently break
+        // the order ticket's balance gate.
+        let balance: bigint;
+        try {
+          balance = BigInt(r.balance ?? "0");
+        } catch {
+          balance = BigInt(0);
+        }
         setState({
-          balance: BigInt(r.balance ?? "0"),
+          balance,
           allowances,
           hasAnyAllowance: hasAny,
           loading: false,

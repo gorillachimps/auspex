@@ -126,6 +126,24 @@ export async function executeBridge(params: {
   onProgress?: (progress: ExecutionProgress) => void;
 }) {
   const client = getClient();
+  // Defense-in-depth: the SDK builds the ERC20 approval + deposit txs against
+  // deposit.spokePoolAddress, which it fetches live from Across's API. Assert
+  // it matches our independently-audited SPOKE_POOL_BY_CHAIN address for this
+  // origin chain BEFORE the user signs — this makes the hardcoded constant
+  // load-bearing rather than a cosmetic UI-label input. A mismatch (SDK
+  // regression, or a compromised/spoofed API response) aborts before any
+  // signature. Matters most because we approve max-uint256 (infiniteApproval).
+  const { originChainId, spokePoolAddress } = params.quote.deposit;
+  const audited = SPOKE_POOL_BY_CHAIN[originChainId];
+  if (
+    audited &&
+    spokePoolAddress &&
+    audited.toLowerCase() !== spokePoolAddress.toLowerCase()
+  ) {
+    throw new Error(
+      `Bridge aborted: the resolved spoke pool (${spokePoolAddress}) for chain ${originChainId} does not match the audited address (${audited}). Not requesting approval.`,
+    );
+  }
   return client.executeQuote({
     deposit: params.quote.deposit,
     walletClient: params.walletClient,
