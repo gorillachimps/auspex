@@ -169,15 +169,6 @@ export function fmtPct(n: number | null | undefined): string {
   return `${n.toFixed(1)}%`;
 }
 
-/** Percent from a 0..1 fraction. fmtPctFromFraction(0.42, 0) → "42%". */
-export function fmtPctFromFraction(
-  p: number | null | undefined,
-  digits = 0,
-): string {
-  if (p == null || !isFinite(p)) return "—";
-  return `${(p * 100).toFixed(digits)}%`;
-}
-
 /**
  * Implied-probability change, formatted with a "%" suffix for readability.
  *

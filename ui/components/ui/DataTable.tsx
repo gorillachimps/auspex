@@ -115,31 +115,3 @@ export function SortableTh<K extends string>({
     </th>
   );
 }
-
-/**
- * Convenience wrapper for the table container styling used across all
- * data views. Adds the overflow-x scroll for narrow viewports, the
- * border, the surface background, and (if `loading`) a thin loading
- * footer.
- */
-export function DataTableShell({
-  children,
-  loading = false,
-  footer,
-}: {
-  children: ReactNode;
-  loading?: boolean;
-  footer?: ReactNode;
-}) {
-  return (
-    <div className="overflow-x-auto rounded-md border border-border bg-surface/20 scrollbar-thin">
-      {children}
-      {loading ? (
-        <div className="border-t border-border/60 bg-surface-2/30 px-3 py-1.5 text-[10px] text-muted-2">
-          Refreshing…
-        </div>
-      ) : null}
-      {footer}
-    </div>
-  );
-}

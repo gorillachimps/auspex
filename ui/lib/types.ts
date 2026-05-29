@@ -26,7 +26,6 @@ export const LiveStateSchema = z.discriminatedUnion("state", [
     reason: z.string().optional(),
   }),
 ]);
-export type LiveState = z.infer<typeof LiveStateSchema>;
 
 export const EnrichedMarketSchema = z
   .object({
