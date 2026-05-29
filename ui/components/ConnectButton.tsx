@@ -16,6 +16,7 @@ import { readFunderAddress } from "@/lib/polymarket";
 import { useClobSession } from "@/lib/useClobSession";
 import { DepositWalletDialog } from "./DepositWalletDialog";
 import { BridgeDialog } from "./BridgeDialog";
+import { OPEN_DEPOSIT_DIALOG_EVENT } from "@/lib/depositDialog";
 import { cn } from "@/lib/cn";
 
 function shortAddress(a?: string) {
@@ -76,6 +77,23 @@ function ConnectButtonInner() {
       document.removeEventListener("keydown", onKey);
     };
   }, [menuOpen]);
+
+  // Any no-funder surface across the app (portfolio empty state, order-ticket
+  // blocker, screener nudge) can dispatch OPEN_DEPOSIT_DIALOG_EVENT to pop the
+  // "Connect your trading account" dialog inline — no hunting for this menu.
+  // If the wallet isn't connected yet, kick off login first.
+  useEffect(() => {
+    function onOpen() {
+      if (authenticated) {
+        setMenuOpen(false);
+        setDialogOpen(true);
+      } else {
+        login();
+      }
+    }
+    window.addEventListener(OPEN_DEPOSIT_DIALOG_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_DEPOSIT_DIALOG_EVENT, onOpen);
+  }, [authenticated, login]);
 
   if (!ready) {
     return (

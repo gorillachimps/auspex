@@ -19,6 +19,7 @@ import { track } from "@/lib/track";
 import { cn } from "@/lib/cn";
 import type { TableRow } from "@/lib/types";
 import { BridgeButton } from "./BridgeButton";
+import { openDepositDialog } from "@/lib/depositDialog";
 
 type Outcome = "yes" | "no";
 type SideMode = "buy" | "sell";
@@ -448,7 +449,7 @@ export function OrderTicket({
       case "linking":
         return "Finding your Polymarket account…";
       case "no-funder":
-        return "Set your trading account first (Connect menu → Connect your trading account).";
+        return "Link your Polymarket account to trade — it takes a few seconds.";
       case "linked":
         return "Authorising your session…";
       case "deriving":
@@ -717,6 +718,14 @@ export function OrderTicket({
                 label="Top up"
                 className="shrink-0"
               />
+            ) : session.status === "no-funder" ? (
+              <button
+                type="button"
+                onClick={openDepositDialog}
+                className="shrink-0 rounded-md border border-amber-300/50 bg-amber-400/20 px-3 py-1.5 text-[12px] font-semibold text-amber-100 hover:bg-amber-400/30"
+              >
+                Link account
+              </button>
             ) : null}
           </div>
         ) : null}

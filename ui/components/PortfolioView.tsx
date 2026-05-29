@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { useClobSession } from "@/lib/useClobSession";
 import { useMarketLookup } from "@/lib/useMarketLookup";
 import { useUserPositions, type Position } from "@/lib/useUserPositions";
+import { openDepositDialog } from "@/lib/depositDialog";
 import { placeMarketOrder, Side, tickToString } from "@/lib/polymarket";
 import { cn } from "@/lib/cn";
 import { csvFilename, downloadCsv, toCsv } from "@/lib/csv";
@@ -292,8 +293,17 @@ export function PortfolioView() {
     return (
       <div className="mt-8">
         <EmptyState
-          title="One more step — set your deposit wallet"
-          body="Open the Connect menu in the top-right to point Auspex at your Polymarket account."
+          title="One more step — link your Polymarket account"
+          body="We'll auto-detect it from your connected wallet, or you can paste the address. Takes a few seconds."
+          cta={
+            <button
+              type="button"
+              onClick={openDepositDialog}
+              className="inline-flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/15 px-3 py-1.5 text-[13px] font-semibold text-accent hover:bg-accent/25"
+            >
+              Link account
+            </button>
+          }
         />
       </div>
     );
