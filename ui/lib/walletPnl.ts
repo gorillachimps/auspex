@@ -187,3 +187,70 @@ export function computeWalletPnl(
     wonCount,
   };
 }
+
+export type TraderTag = {
+  label: string;
+  tone: "sharp" | "whale" | "good" | "active" | "caution" | "bad";
+  hint: string;
+};
+
+/**
+ * Heuristic "smart money" tags from the wallet's recent trade history (capped
+ * at the ~2500 trades useWalletTrades pulls) + computed P&L. These are coarse
+ * signals to help triage "is this worth copying", NOT guarantees — sample
+ * sizes are bounded and the windows are recent-only. Caution tags (New wallet,
+ * Underwater) are surfaced deliberately so the read isn't one-sided.
+ */
+export function deriveTraderTags(pnl: WalletPnl, trades: Trade[]): TraderTag[] {
+  const tags: TraderTag[] = [];
+  const n = trades.length;
+  let notional = 0;
+  let minTs = Number.POSITIVE_INFINITY;
+  let maxTs = 0;
+  for (const t of trades) {
+    const v = t.size * t.price;
+    if (isFinite(v)) notional += Math.abs(v);
+    if (isFinite(t.timestamp)) {
+      if (t.timestamp < minTs) minTs = t.timestamp;
+      if (t.timestamp > maxTs) maxTs = t.timestamp;
+    }
+  }
+  const winRate = pnl.closedCount > 0 ? pnl.wonCount / pnl.closedCount : 0;
+  const spanDays = maxTs > minTs ? (maxTs - minTs) / SECONDS_PER_DAY : 0;
+
+  if (pnl.closedCount >= 20 && winRate >= 0.6 && pnl.realizedTotal > 0) {
+    tags.push({
+      label: "Sharp",
+      tone: "sharp",
+      hint: `${Math.round(winRate * 100)}% win rate over ${pnl.closedCount} closed trades`,
+    });
+  }
+  if (notional >= 100_000) {
+    const k =
+      notional >= 1_000_000
+        ? `$${(notional / 1_000_000).toFixed(1)}M`
+        : `$${Math.round(notional / 1000)}k`;
+    tags.push({ label: "Whale", tone: "whale", hint: `~${k} traded (recent history)` });
+  }
+  if (pnl.closedCount >= 5 && pnl.total > 0) {
+    tags.push({ label: "In profit", tone: "good", hint: "net positive: realized + unrealized" });
+  }
+  if (n >= 500) {
+    tags.push({ label: "High activity", tone: "active", hint: `${n}+ recent trades` });
+  }
+  if (n > 0 && (n < 10 || (spanDays > 0 && spanDays < 14))) {
+    tags.push({
+      label: "New wallet",
+      tone: "caution",
+      hint: "short history / few trades — small sample, treat with caution",
+    });
+  }
+  if (pnl.closedCount >= 20 && pnl.realizedTotal < 0) {
+    tags.push({
+      label: "Underwater",
+      tone: "bad",
+      hint: `realized P&L negative over ${pnl.closedCount} closed trades`,
+    });
+  }
+  return tags;
+}

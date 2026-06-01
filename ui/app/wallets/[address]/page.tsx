@@ -11,11 +11,20 @@ import { WalletTradesView } from "@/components/WalletTradesView";
 import { WalletPnLChart } from "@/components/WalletPnLChart";
 import { useUserPositions } from "@/lib/useUserPositions";
 import { useWalletTrades } from "@/lib/useWalletTrades";
-import { computeWalletPnl } from "@/lib/walletPnl";
+import { computeWalletPnl, deriveTraderTags, type TraderTag } from "@/lib/walletPnl";
 import { shortAddress } from "@/lib/resolveWallet";
 import { cn } from "@/lib/cn";
 
 type Props = { params: Promise<{ address: string }> };
+
+const TAG_TONE: Record<TraderTag["tone"], string> = {
+  sharp: "bg-accent/15 text-accent ring-accent/40",
+  whale: "bg-fuchsia-500/15 text-fuchsia-200 ring-fuchsia-400/40",
+  good: "bg-emerald-500/15 text-emerald-200 ring-emerald-400/40",
+  active: "bg-sky-500/15 text-sky-200 ring-sky-400/40",
+  caution: "bg-amber-500/15 text-amber-200 ring-amber-400/40",
+  bad: "bg-rose-500/15 text-rose-200 ring-rose-400/40",
+};
 
 export default function WalletDetailPage({ params }: Props) {
   const { address } = use(params);
@@ -30,6 +39,11 @@ export default function WalletDetailPage({ params }: Props) {
     if (!tradesState.trades || !positionsState.positions) return null;
     return computeWalletPnl(tradesState.trades, positionsState.positions);
   }, [tradesState.trades, positionsState.positions]);
+
+  const tags = useMemo(
+    () => (pnl && tradesState.trades ? deriveTraderTags(pnl, tradesState.trades) : []),
+    [pnl, tradesState.trades],
+  );
 
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -100,6 +114,26 @@ export default function WalletDetailPage({ params }: Props) {
             </div>
             <FollowButton address={proxy} />
           </div>
+
+          {tags.length > 0 ? (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-2">
+                Trader profile
+              </span>
+              {tags.map((t) => (
+                <span
+                  key={t.label}
+                  title={t.hint}
+                  className={cn(
+                    "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1",
+                    TAG_TONE[t.tone],
+                  )}
+                >
+                  {t.label}
+                </span>
+              ))}
+            </div>
+          ) : null}
 
           {/* P&L summary tiles */}
           <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
