@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { usePolledResource } from "./usePolledResource";
 import { useTriggerAlerts } from "./useTriggerAlerts";
 import { addNotification } from "./useNotifications";
 import type { TableRow } from "./types";
 
-const MARKETS_URL = "/api/markets?limit=500";
+const MARKETS_URL = "/api/markets";
 const POLL_MS = 60_000;
 const FIRED_KEY = "auspex.trigger-alerts-fired.v1";
 
@@ -60,29 +60,59 @@ function fireBrowserNotification(title: string, body: string, slug: string) {
  * granted permission via the nav bell) are emitted. Only polls while at least
  * one alert is armed.
  *
- * v1 limitation: matches alerts against the top-500-by-volume markets the API
- * returns. A market outside that set can't be evaluated; in practice users
- * alert on markets they found while browsing, which are in-set.
+ * Coverage: the watcher fetches exactly the markets the user has armed (by id),
+ * so an alert set from a market-detail page on a low-volume market is evaluated
+ * the same as a top-of-screener one. The only markets it can't evaluate are
+ * those the data pipeline has dropped from the current snapshot (resolved or
+ * expired) — those simply don't fire.
  */
 export function useTriggerAlertsWatcher() {
   const { alerts } = useTriggerAlerts();
   const enabled = alerts.length > 0;
 
+  // Stable key over the armed market ids: re-fetches immediately when the user
+  // arms or disarms an alert (not only on the 60s tick), and scopes the request
+  // to just those markets instead of the whole top-of-volume slice.
+  const idsKey = useMemo(
+    () => [...new Set(alerts.map((a) => a.marketId))].sort().join(","),
+    [alerts],
+  );
+
   const { data } = usePolledResource<TableRow[]>(
     async () => {
-      const r = await fetch(MARKETS_URL, { cache: "no-store" });
+      const ids = idsKey ? idsKey.split(",") : [];
+      if (ids.length === 0) return [];
+      const r = await fetch(
+        `${MARKETS_URL}?ids=${encodeURIComponent(ids.join(","))}`,
+        { cache: "no-store" },
+      );
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const json = await r.json();
       return Array.isArray(json?.markets) ? (json.markets as TableRow[]) : [];
     },
-    { intervalMs: POLL_MS, enabled, deps: [enabled] },
+    { intervalMs: POLL_MS, enabled, deps: [enabled, idsKey] },
   );
 
   useEffect(() => {
-    if (!data || alerts.length === 0) return;
-    const byId = new Map(data.map((r) => [r.id, r]));
     const fired = readFired();
     let changed = false;
+
+    // Reconcile first: drop fired flags for markets that are no longer armed,
+    // so the persisted set stays bounded and a re-armed alert can fire again.
+    const armedIds = new Set(alerts.map((a) => a.marketId));
+    for (const key of [...fired]) {
+      const marketId = key.replace(/:(hit|near)$/, "");
+      if (!armedIds.has(marketId)) {
+        fired.delete(key);
+        changed = true;
+      }
+    }
+
+    if (!data || alerts.length === 0) {
+      if (changed) writeFired(fired);
+      return;
+    }
+    const byId = new Map(data.map((r) => [r.id, r]));
 
     for (const alert of alerts) {
       const row = byId.get(alert.marketId);

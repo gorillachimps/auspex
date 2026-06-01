@@ -106,6 +106,17 @@ export async function getMarketBySlug(slug: string): Promise<TableRow | null> {
   return rows.find((r) => r.slug === slug) ?? null;
 }
 
+/** Look up full rows for a set of market ids. Used by Trigger Radar's watcher
+ *  so it can evaluate exactly the markets the user armed an alert on — at any
+ *  volume rank — instead of scanning only the top-N-by-volume slice. Returns
+ *  only the ids present in the current snapshot (resolved/expired markets that
+ *  the pipeline has dropped won't appear). */
+export async function getMarketsByIds(ids: string[]): Promise<TableRow[]> {
+  const { rows } = await load();
+  const wanted = new Set(ids.map((id) => String(id)));
+  return rows.filter((r) => wanted.has(r.id));
+}
+
 export type MarketLookupEntry = {
   /** Either `tokenYes` or `tokenNo` matched. */
   tokenId: string;
