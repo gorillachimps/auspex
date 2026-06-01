@@ -35,11 +35,12 @@ type Props = {
   sorting: SortingState;
   onSortingChange: (next: SortingState) => void;
   onClearFilters?: () => void;
+  density?: "compact" | "default";
 };
 
 const columnHelper = createColumnHelper<TableRow>();
 
-export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: Props) {
+export function MarketTable({ rows, sorting, onSortingChange, onClearFilters, density = "default" }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [highlight, setHighlight] = useState<string | null>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -527,7 +528,10 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters }: 
                     <td
                       key={cell.id}
                       style={{ width: cell.column.getSize() }}
-                      className="border-b border-border/70 px-3 py-1.5 align-middle"
+                      className={cn(
+                        "border-b border-border/70 px-3 align-middle",
+                        density === "compact" ? "py-0.5" : "py-1.5",
+                      )}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
