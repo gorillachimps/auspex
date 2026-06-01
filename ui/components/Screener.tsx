@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryState, parseAsString, parseAsStringLiteral } from "nuqs";
 import type { SortingState } from "@tanstack/react-table";
-import { Activity, BookmarkPlus, X } from "lucide-react";
+import { Activity, AlignJustify, BookmarkPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { SubtypeFilter } from "./SubtypeFilter";
 import { MarketTable } from "./MarketTable";
@@ -14,6 +14,7 @@ import { OrderTicket } from "./OrderTicket";
 import { SUBTYPE_CHIPS } from "@/lib/families";
 import { cn } from "@/lib/cn";
 import { useStarred } from "@/lib/useStarred";
+import { useDensity } from "@/lib/useDensity";
 import { useLiveMidMap } from "@/lib/useLiveMarket";
 import { useSavedFilters } from "@/lib/useSavedFilters";
 import type { Family, TableRow } from "@/lib/types";
@@ -82,6 +83,7 @@ export function Screener({ rows }: Props) {
   const [liveFlag, setLiveFlag] = useQueryState("live", liveParser);
 
   const { starred } = useStarred();
+  const [density, setDensity] = useDensity();
   const isStarredOn = starredFlag === "1";
   const isLiveOn = liveFlag === "1";
 
@@ -276,6 +278,20 @@ export function Screener({ rows }: Props) {
             <div className="ml-auto flex items-center gap-2">
               <button
                 type="button"
+                onClick={() => setDensity(density === "compact" ? "default" : "compact")}
+                className={
+                  density === "compact"
+                    ? "inline-flex items-center gap-1.5 rounded-full bg-accent/15 px-2.5 py-1 text-[12px] font-medium text-accent ring-1 ring-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    : "inline-flex items-center gap-1.5 rounded-full bg-zinc-700/40 px-2.5 py-1 text-[12px] font-medium text-zinc-200 ring-1 ring-zinc-500/40 hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                }
+                title="Compact row density — fit more rows on screen"
+                aria-pressed={density === "compact"}
+              >
+                <AlignJustify className="h-3 w-3" aria-hidden="true" />
+                Compact
+              </button>
+              <button
+                type="button"
                 onClick={() => setLiveFlag(isLiveOn ? null : "1", { shallow: true })}
                 className={
                   isLiveOn
@@ -358,6 +374,7 @@ export function Screener({ rows }: Props) {
           sorting={sorting}
           onSortingChange={setSorting}
           onClearFilters={filtersActive ? resetAll : undefined}
+          density={density}
         />
       </div>
       <OrderTicket
