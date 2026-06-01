@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { Providers } from "./providers";
 import { PlausibleScript } from "@/components/PlausibleScript";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 
-// next/font/google requires outbound network at build/dev time. globals.css
-// already provides a system-font fallback chain via var(--font-geist-sans, …),
-// so we omit the Google import here. To re-enable Geist on Vercel, swap this
-// for `import { Geist, Geist_Mono } from "next/font/google"` and reinstate the
-// className wiring.
+// Geist is self-hosted via the `geist` package (local next/font assets) — no
+// build-time network fetch, unlike next/font/google. The .variable classes set
+// --font-geist-sans / --font-geist-mono, which globals.css already consumes;
+// the system-ui chain in globals.css remains as a fallback.
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -24,7 +25,10 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className="h-full antialiased">
+    <html
+      lang="en"
+      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
+    >
       <head>
         <PlausibleScript />
       </head>
