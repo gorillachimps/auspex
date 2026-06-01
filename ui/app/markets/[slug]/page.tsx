@@ -223,12 +223,35 @@ export default async function MarketDetailPage({ params, searchParams }: Props) 
             />
           </div>
 
-          <Card className="mt-6" title="Rule">
+          <Card className="mt-6" title="How this resolves">
             <p className="text-[13px] leading-relaxed text-foreground/90">
               {summarizeRules(row)}
               {row.liveState === "deferred" && row.liveReason ? (
                 <span className="ml-2 text-muted">({row.liveReason})</span>
               ) : null}
+            </p>
+            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+              <ResolveFact label="Settles by" value={fmtSourceLabel(row.source, row.pair)} />
+              <ResolveFact
+                label="Resolution deadline"
+                value={row.endDate ? new Date(row.endDate).toUTCString() : "—"}
+              />
+              <ResolveFact label="Oracle" value="UMA optimistic oracle" />
+            </dl>
+            <p className="mt-3 text-[12px] leading-relaxed text-muted">
+              Outcomes are finalized by Polymarket via UMA&apos;s optimistic
+              oracle: a proposed result can be challenged during a dispute window
+              before it settles. {resolutionStateNote(row)} Auspex doesn&apos;t
+              control resolution — confirm the live oracle status on{" "}
+              <a
+                href={`https://polymarket.com/event/${row.slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent hover:underline"
+              >
+                Polymarket
+              </a>
+              .
             </p>
           </Card>
 
@@ -319,6 +342,24 @@ function Card({
       {children}
     </section>
   );
+}
+
+function ResolveFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col">
+      <dt className="text-[10px] uppercase tracking-wider text-muted-2">{label}</dt>
+      <dd className="tabular text-[12px] text-foreground/90">{value}</dd>
+    </div>
+  );
+}
+
+/** Honest, data-derived resolution-state note. We surface the UMA *mechanism*
+ *  and the lifecycle phase inferred from the close date — we deliberately do
+ *  NOT invent a specific dispute status we can't verify on-chain here. */
+function resolutionStateNote(row: { endDate: string | null }): string {
+  return urgencyForEnd(row.endDate) === "ended"
+    ? "Trading has closed; it's now in the resolution / arbitration window."
+    : "It's still open for trading until the deadline above.";
 }
 
 /** Build the pre-filled text for share-to-X / Farcaster. Includes the market
