@@ -10,6 +10,7 @@ import type { FollowedWallet } from "@/lib/useFollowedWallets";
 import { shortAddress } from "@/lib/resolveWallet";
 import { cn } from "@/lib/cn";
 import { fmtAgoUnix, fmtUSDCompact } from "@/lib/format";
+import { useMarketLookup, type MarketLookupEntry } from "@/lib/useMarketLookup";
 
 const fmtCompactUSD = fmtUSDCompact;
 const fmtRelative = fmtAgoUnix;
@@ -30,6 +31,16 @@ type Props = {
 export function FollowedActivityFeed({ followed }: Props) {
   const addresses = useMemo(() => followed.map((w) => w.address), [followed]);
   const state = useFollowedActivityFeed(addresses);
+
+  // Resolve each trade's conditional-token to an Auspex (crypto) market. We
+  // only deep-link / offer copy-this-fill for markets that exist on Auspex —
+  // a followed wallet trading a non-crypto market (politics, sports) would
+  // otherwise 404 on /markets/[slug]. Unresolved markets link out to Polymarket.
+  const assetIds = useMemo(
+    () => state.trades.map((t) => t.asset).filter(Boolean),
+    [state.trades],
+  );
+  const lookup = useMarketLookup(assetIds);
 
   // Map address → label for the attribution chip. Falls back to short
   // address when the user hasn't named the wallet.
@@ -81,6 +92,7 @@ export function FollowedActivityFeed({ followed }: Props) {
               key={`${t.transactionHash}-${t.asset}-${t.timestamp}`}
               trade={t}
               label={labelByAddress.get(t.followedWallet) ?? ""}
+              entry={lookup[t.asset]}
             />
           ))}
         </ul>
@@ -89,7 +101,19 @@ export function FollowedActivityFeed({ followed }: Props) {
   );
 }
 
-function Row({ trade, label }: { trade: ActivityTrade; label: string }) {
+function Row({
+  trade,
+  label,
+  entry,
+}: {
+  trade: ActivityTrade;
+  label: string;
+  entry?: MarketLookupEntry;
+}) {
+  // Auspex (crypto) markets resolve to a snapshot slug; non-crypto markets a
+  // followed wallet trades don't, and must not deep-link into /markets/[slug].
+  const auspexSlug = entry?.slug || null;
+  const canCopy = trade.side === "BUY" && !!auspexSlug && !!trade.outcome;
   // Same color rule as WhaleFeedStream: bullish flow on YES → emerald.
   const bullish =
     (trade.side === "BUY" && trade.outcome?.toLowerCase() === "yes") ||
@@ -100,7 +124,7 @@ function Row({ trade, label }: { trade: ActivityTrade; label: string }) {
     : "bg-rose-500/15 ring-rose-400/40 text-rose-200";
   const notional = trade.size * trade.price;
   return (
-    <li className="flex items-center gap-3 px-4 py-2 text-[12px] hover:bg-surface-2/30">
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-[12px] hover:bg-surface-2/30">
       <a
         href={`/wallets/${trade.followedWallet}`}
         className="shrink-0 truncate rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent ring-1 ring-accent/30 hover:bg-accent/20"
@@ -122,25 +146,35 @@ function Row({ trade, label }: { trade: ActivityTrade; label: string }) {
       <span className="shrink-0 tabular-nums text-muted">
         @ {(trade.price * 100).toFixed(1)}¢
       </span>
-      {trade.slug ? (
+      {auspexSlug ? (
         <a
-          href={`/markets/${trade.slug}`}
-          className="min-w-0 flex-1 truncate text-foreground/85 hover:text-foreground hover:underline"
+          href={`/markets/${auspexSlug}`}
+          className="min-w-0 w-full md:w-auto md:flex-1 truncate text-foreground/85 hover:text-foreground hover:underline"
           title={trade.title}
         >
           {trade.title ?? "—"}
         </a>
+      ) : trade.slug ? (
+        <a
+          href={`https://polymarket.com/event/${trade.slug}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="min-w-0 w-full md:w-auto md:flex-1 truncate text-muted hover:text-foreground hover:underline"
+          title={`${trade.title ?? "Market"} — not a crypto market; opens on Polymarket`}
+        >
+          {trade.title ?? "—"}
+        </a>
       ) : (
-        <span className="min-w-0 flex-1 truncate text-foreground/85">
+        <span className="min-w-0 w-full md:w-auto md:flex-1 truncate text-foreground/85">
           {trade.title ?? "—"}
         </span>
       )}
       <span className="shrink-0 text-[10px] tabular-nums text-muted-2">
         {fmtRelative(trade.timestamp)}
       </span>
-      {trade.side === "BUY" && trade.slug && trade.outcome ? (
+      {canCopy ? (
         <a
-          href={`/markets/${trade.slug}?copy=${trade.outcome.toLowerCase()}`}
+          href={`/markets/${auspexSlug}?copy=${trade.outcome!.toLowerCase()}`}
           className="shrink-0 inline-flex items-center gap-1 rounded-md border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent hover:bg-accent/20"
           title={`Open a Buy ${trade.outcome} ticket on this market`}
         >
