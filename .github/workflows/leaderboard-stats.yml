@@ -1,0 +1,51 @@
+name: leaderboard-stats
+
+# Precomputes per-wallet win-rate + recent realized P&L for the leaderboard set
+# and commits ui/public/leaderboard-stats.json. Polymarket's public leaderboard
+# API only exposes all-time profit/volume per wallet; win-rate + sample size
+# need each wallet's /trades history — an ~80-wallet fan-out that doesn't belong
+# in a per-render client fetch, so it's batched here every 6h and served static.
+# The script skips the write (no commit, no redeploy) when stats are unchanged.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {} # manual trigger from the Actions tab
+
+permissions:
+  contents: write
+
+concurrency:
+  group: leaderboard-stats
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Compute leaderboard stats
+        working-directory: ui
+        run: npx -y tsx@4 scripts/build-leaderboard-stats.ts
+
+      - name: Commit if changed
+        run: |
+          git config user.name "auspex-bot"
+          # GitHub-attributable noreply so Vercel accepts the auto-deploy this
+          # commit triggers (same as data-refresh.yml).
+          git config user.email "96061296+gorillachimps@users.noreply.github.com"
+          if git diff --quiet ui/public/leaderboard-stats.json; then
+            echo "No changes — exiting clean."
+            exit 0
+          fi
+          git add ui/public/leaderboard-stats.json
+          git commit -m "data: refresh leaderboard stats ($(date -u +%H:%MZ))"
+          git push
