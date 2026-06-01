@@ -55,6 +55,7 @@ const QUICK_SCREENS: { label: string; sort: string; live?: boolean; hint: string
   { label: "Deepest books", sort: "depth:desc", hint: "Most order-book liquidity to size into" },
   { label: "High clarity", sort: "rc:desc", live: true, hint: "Cleanest resolution path (Clarity score)" },
   { label: "Most traded", sort: "volume24h:desc", hint: "Busiest markets by 24h volume" },
+  { label: "Most competitive", sort: "competitive", hint: "Closest to a 50/50 coin-flip" },
 ];
 
 // Numeric MIN/MAX screener filters. Keys index the local filter state; all map
@@ -140,7 +141,16 @@ export function Screener({ rows }: Props) {
     });
   }, [rows, liveMids]);
 
-  const sorting = useMemo(() => parseSort(sortParam), [sortParam]);
+  // "competitive" is an alternate sort that isn't a table column (closeness to
+  // 50/50). In that mode we pre-sort the rows ourselves and hand the table an
+  // empty SortingState — both the desktop table (react-table) and the mobile
+  // list preserve input order when sorting is empty. Clicking any column header
+  // sets a real sort and exits competitive mode naturally.
+  const isCompetitive = sortParam === "competitive";
+  const sorting = useMemo(
+    () => (isCompetitive ? [] : parseSort(sortParam)),
+    [sortParam, isCompetitive],
+  );
   const setSorting = (next: SortingState) => {
     setSortParam(serializeSort(next), { shallow: true });
   };
@@ -206,6 +216,17 @@ export function Screener({ rows }: Props) {
       return true;
     });
   }, [rowsWithLive, active, ticker, isStarredOn, starred, isLiveOn, search, nf]);
+
+  // Apply the "competitive" (closeness-to-50/50) pre-sort when active; markets
+  // with no implied price sink to the bottom.
+  const displayRows = useMemo(() => {
+    if (!isCompetitive) return filtered;
+    const dist = (r: TableRow) =>
+      r.impliedYes == null
+        ? Number.POSITIVE_INFINITY
+        : Math.abs(r.impliedYes - 0.5);
+    return [...filtered].sort((a, b) => dist(a) - dist(b));
+  }, [filtered, isCompetitive]);
 
   const showTickerRow = (active === "all" || active === "binance_price") && tickerOptions.length > 0;
 
@@ -462,7 +483,7 @@ export function Screener({ rows }: Props) {
           ) : null}
         </div>
         <MarketTable
-          rows={filtered}
+          rows={displayRows}
           sorting={sorting}
           onSortingChange={setSorting}
           onClearFilters={filtersActive ? resetAll : undefined}
