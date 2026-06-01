@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { fmtImpliedPct } from "@/lib/format";
 import { flashClass, useFlashOnChange } from "@/lib/useFlashOnChange";
 import { cn } from "@/lib/cn";
@@ -17,7 +18,7 @@ type Props = {
  *  updates from the WS subscription — same affordance pro trading UIs use
  *  to make tick movement feel alive.
  */
-export function PmBar({ impliedYes }: Props) {
+export const PmBar = memo(function PmBar({ impliedYes }: Props) {
   // Suppress sub-half-cent jitter: WS rebroadcasts the mid frequently with
   // tiny noise; we only want a visible flash on real movement.
   const flash = useFlashOnChange(impliedYes, { minDelta: 0.005 });
@@ -56,4 +57,4 @@ export function PmBar({ impliedYes }: Props) {
       </div>
     </div>
   );
-}
+});

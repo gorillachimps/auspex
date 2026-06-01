@@ -245,11 +245,34 @@ export function useLiveMidMap(tokenIds: string[]): Map<string, number> {
       setMids(new Map());
       return;
     }
+    // Prune mids for tokens that rotated out of the subscribed set. Otherwise
+    // the Map keeps stale, frozen mids for markets no longer on screen and
+    // grows without bound as the user filters / paginates the screener.
+    const idSet = new Set(ids);
+    setMids((prev) => {
+      let stale = false;
+      for (const k of prev.keys()) {
+        if (!idSet.has(k)) {
+          stale = true;
+          break;
+        }
+      }
+      if (!stale) return prev;
+      const next = new Map<string, number>();
+      for (const [k, v] of prev) if (idSet.has(k)) next.set(k, v);
+      return next;
+    });
     let cancelled = false;
     // Per-token book state lives in this closure, NOT in component state, so
     // we don't trigger a re-render on every price_change event — only when a
     // mid actually changes.
     const localBooks = new Map<string, { bids: Map<string, string>; asks: Map<string, string> }>();
+    // Coalesce mid updates: WS book/price-change events fire many times a second
+    // across the subscribed set. Staging changes and flushing them on a single
+    // timer collapses a burst into ONE setState (one screener re-render + re-sort)
+    // instead of one per message; at this cadence the live feel is unchanged.
+    const FLUSH_MS = 800;
+    const pending = new Map<string, number>();
 
     function recomputeMid(id: string) {
       if (cancelled) return;
@@ -271,14 +294,24 @@ export function useLiveMidMap(tokenIds: string[]): Map<string, number> {
           ? (bestBid + bestAsk) / 2
           : bestBid ?? bestAsk;
       if (mid == null) return;
-      setMids((prev) => {
-        const cur = prev.get(id);
-        if (cur != null && Math.abs(cur - mid) < 1e-9) return prev;
-        const next = new Map(prev);
-        next.set(id, mid);
-        return next;
-      });
+      pending.set(id, mid);
     }
+
+    function flush() {
+      if (cancelled || pending.size === 0) return;
+      setMids((prev) => {
+        let next: Map<string, number> | null = null;
+        for (const [id, mid] of pending) {
+          const cur = prev.get(id);
+          if (cur != null && Math.abs(cur - mid) < 1e-9) continue;
+          if (!next) next = new Map(prev);
+          next.set(id, mid);
+        }
+        return next ?? prev;
+      });
+      pending.clear();
+    }
+    const flushTimer = setInterval(flush, FLUSH_MS);
 
     const unsub = polymarketMarketWs.subscribe(ids, {
       onBook: (e) => {
@@ -309,6 +342,7 @@ export function useLiveMidMap(tokenIds: string[]): Map<string, number> {
     });
     return () => {
       cancelled = true;
+      clearInterval(flushTimer);
       unsub();
     };
   }, [depKey]);
