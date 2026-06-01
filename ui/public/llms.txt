@@ -1,0 +1,18 @@
+# Auspex
+
+> A Polymarket-backed crypto-bet screener and trading surface. Live crypto prediction markets scored by distance-to-trigger and resolution confidence, with non-custodial trading, wallet tracking, social follows, and distance-to-trigger alerts.
+
+## Pages
+
+- [Screener](https://auspex.to/): the home screener — live crypto prediction markets sorted by signal
+- [Docs](https://auspex.to/docs): how Auspex works
+- [Leaderboard](https://auspex.to/leaderboard): top Polymarket traders by performance
+- [Security](https://auspex.to/security): the non-custodial security model
+- [Changelog](https://auspex.to/changelog): release notes
+- [Privacy](https://auspex.to/privacy) · [Terms](https://auspex.to/terms)
+
+## About
+
+- Non-custodial: your wallet signs every trade; Auspex never holds funds or the keys that authorize a transfer.
+- Data: the Polymarket CLOB for live order books and a crypto-event snapshot refreshed roughly every 15 minutes.
+- Not affiliated with Polymarket. Informational only; not trading or investment advice.

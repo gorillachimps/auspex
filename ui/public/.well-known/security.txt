@@ -1,0 +1,6 @@
+# Auspex security contact — https://auspex.to
+Contact: mailto:security@auspex.to
+Expires: 2027-06-01T00:00:00.000Z
+Policy: https://auspex.to/security
+Preferred-Languages: en
+Canonical: https://auspex.to/.well-known/security.txt
