@@ -12,6 +12,7 @@ import { TickerChips } from "./TickerChips";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import { OrderTicket } from "./OrderTicket";
 import { SUBTYPE_CHIPS } from "@/lib/families";
+import { cn } from "@/lib/cn";
 import { useStarred } from "@/lib/useStarred";
 import { useLiveMidMap } from "@/lib/useLiveMarket";
 import { useSavedFilters } from "@/lib/useSavedFilters";
@@ -41,6 +42,19 @@ type Props = {
 };
 
 const DEFAULT_SORT = "days:asc";
+
+// One-tap "quick screens" — curated starter views built from the sorts the
+// table already supports (column ids: delta, delta24h, depth, rc, volume24h,
+// days). Lowers the cold-start cost of the screener for newcomers without
+// adding any new query surface. `live` arms the existing "Live only" toggle.
+const QUICK_SCREENS: { label: string; sort: string; live?: boolean; hint: string }[] = [
+  { label: "Closing soon", sort: "days:asc", hint: "Ending soonest first — short-dated bets" },
+  { label: "Near trigger", sort: "delta:asc", live: true, hint: "Closest to crossing their resolution line" },
+  { label: "Biggest movers", sort: "delta24h:desc", hint: "Largest 24h odds shifts" },
+  { label: "Deepest books", sort: "depth:desc", hint: "Most order-book liquidity to size into" },
+  { label: "High clarity", sort: "rc:desc", live: true, hint: "Cleanest resolution path (Clarity score)" },
+  { label: "Most traded", sort: "volume24h:desc", hint: "Busiest markets by 24h volume" },
+];
 
 function parseSort(s: string): SortingState {
   if (!s) return [];
@@ -210,6 +224,16 @@ export function Screener({ rows }: Props) {
     toast.success(`Saved "${name.trim()}" to your watchlists.`);
   }
 
+  const applyQuickScreen = useCallback(
+    (p: (typeof QUICK_SCREENS)[number]) => {
+      setSortParam(p.sort === DEFAULT_SORT ? null : p.sort, { shallow: true });
+      setLiveFlag(p.live ? "1" : null, { shallow: true });
+    },
+    [setSortParam, setLiveFlag],
+  );
+  const activeQuickScreen = (p: (typeof QUICK_SCREENS)[number]) =>
+    (sortParam || DEFAULT_SORT) === p.sort && !!p.live === isLiveOn;
+
   const resetAll = useCallback(() => {
     setActive(null, { shallow: true });
     setTicker(null, { shallow: true });
@@ -288,6 +312,31 @@ export function Screener({ rows }: Props) {
                 <span className="tabular text-[10px] opacity-70">{starred.size}</span>
               </button>
             </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-2">
+              Quick screens
+            </span>
+            {QUICK_SCREENS.map((p) => {
+              const on = activeQuickScreen(p);
+              return (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => applyQuickScreen(p)}
+                  aria-pressed={on}
+                  title={p.hint}
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                    on
+                      ? "bg-accent/15 text-accent ring-accent/40"
+                      : "bg-zinc-700/40 text-zinc-200 ring-zinc-500/40 hover:brightness-125",
+                  )}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
           </div>
           <SubtypeFilter
             active={active}
