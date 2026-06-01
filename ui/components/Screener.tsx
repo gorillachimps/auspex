@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryState, parseAsString, parseAsStringLiteral } from "nuqs";
 import type { SortingState } from "@tanstack/react-table";
-import { Activity, AlignJustify, BookmarkPlus, X } from "lucide-react";
+import { Activity, AlignJustify, BookmarkPlus, SlidersHorizontal, X } from "lucide-react";
 import { toast } from "sonner";
 import { SubtypeFilter } from "./SubtypeFilter";
 import { MarketTable } from "./MarketTable";
@@ -57,6 +57,15 @@ const QUICK_SCREENS: { label: string; sort: string; live?: boolean; hint: string
   { label: "Most traded", sort: "volume24h:desc", hint: "Busiest markets by 24h volume" },
 ];
 
+// Numeric MIN/MAX screener filters. Keys index the local filter state; all map
+// to fields already on TableRow, so this is pure client-side filtering.
+const FILTER_FIELDS = [
+  { key: "minVol", label: "Min 24h vol ($)", ph: "e.g. 5000" },
+  { key: "minDepth", label: "Min depth ($)", ph: "e.g. 1000" },
+  { key: "maxDist", label: "Max distance (%)", ph: "e.g. 5" },
+  { key: "minRc", label: "Min clarity", ph: "0–100" },
+] as const;
+
 function parseSort(s: string): SortingState {
   if (!s) return [];
   const idx = s.lastIndexOf(":");
@@ -86,6 +95,24 @@ export function Screener({ rows }: Props) {
   const [density, setDensity] = useDensity();
   const isStarredOn = starredFlag === "1";
   const isLiveOn = liveFlag === "1";
+
+  const [showFilters, setShowFilters] = useState(false);
+  const [numFilters, setNumFilters] = useState({
+    minVol: "",
+    minDepth: "",
+    maxDist: "",
+    minRc: "",
+  });
+  const nf = useMemo(
+    () => ({
+      minVol: parseFloat(numFilters.minVol),
+      minDepth: parseFloat(numFilters.minDepth),
+      maxDist: parseFloat(numFilters.maxDist),
+      minRc: parseFloat(numFilters.minRc),
+    }),
+    [numFilters],
+  );
+  const numFilterCount = Object.values(numFilters).filter((v) => v.trim() !== "").length;
 
   const liveCount = useMemo(
     () => rows.filter((r) => r.liveState === "live").length,
@@ -168,9 +195,17 @@ export function Screener({ rows }: Props) {
       if (isStarredOn && !starred.has(r.id)) return false;
       if (isLiveOn && r.liveState !== "live") return false;
       if (q && !r.question.toLowerCase().includes(q)) return false;
+      // Numeric range filters (blank input parses to NaN = inactive).
+      if (!Number.isNaN(nf.minVol) && r.volume24h < nf.minVol) return false;
+      if (!Number.isNaN(nf.minDepth) && (r.liquidity ?? 0) < nf.minDepth) return false;
+      if (!Number.isNaN(nf.maxDist)) {
+        if (r.liveState !== "live" || r.distancePct == null) return false;
+        if (Math.abs(r.distancePct * 100) > nf.maxDist) return false;
+      }
+      if (!Number.isNaN(nf.minRc) && (r.rc ?? -1) < nf.minRc) return false;
       return true;
     });
-  }, [rowsWithLive, active, ticker, isStarredOn, starred, isLiveOn, search]);
+  }, [rowsWithLive, active, ticker, isStarredOn, starred, isLiveOn, search, nf]);
 
   const showTickerRow = (active === "all" || active === "binance_price") && tickerOptions.length > 0;
 
@@ -179,6 +214,7 @@ export function Screener({ rows }: Props) {
     ticker !== "" ||
     isStarredOn ||
     isLiveOn ||
+    numFilterCount > 0 ||
     search.trim() !== "";
 
   const [ticket, setTicket] = useState<{
@@ -242,6 +278,7 @@ export function Screener({ rows }: Props) {
     setStarredFlag(null, { shallow: true });
     setLiveFlag(null, { shallow: true });
     setSearch(null, { shallow: true });
+    setNumFilters({ minVol: "", minDepth: "", maxDist: "", minRc: "" });
   }, [setActive, setTicker, setStarredFlag, setLiveFlag, setSearch]);
 
   return (
@@ -276,6 +313,24 @@ export function Screener({ rows }: Props) {
               </>
             ) : null}
             <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowFilters((s) => !s)}
+                aria-pressed={numFilterCount > 0}
+                aria-expanded={showFilters}
+                title="Filter by volume, depth, distance, clarity"
+                className={
+                  numFilterCount > 0
+                    ? "inline-flex items-center gap-1.5 rounded-full bg-accent/15 px-2.5 py-1 text-[12px] font-medium text-accent ring-1 ring-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    : "inline-flex items-center gap-1.5 rounded-full bg-zinc-700/40 px-2.5 py-1 text-[12px] font-medium text-zinc-200 ring-1 ring-zinc-500/40 hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                }
+              >
+                <SlidersHorizontal className="h-3 w-3" aria-hidden="true" />
+                Filters
+                {numFilterCount > 0 ? (
+                  <span className="tabular text-[10px] opacity-80">{numFilterCount}</span>
+                ) : null}
+              </button>
               <button
                 type="button"
                 onClick={() => setDensity(density === "compact" ? "default" : "compact")}
@@ -367,6 +422,43 @@ export function Screener({ rows }: Props) {
               active={ticker}
               onChange={(next) => setTicker(next || null, { shallow: true })}
             />
+          ) : null}
+          {showFilters ? (
+            <div className="rounded-md border border-border bg-surface/40 p-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {FILTER_FIELDS.map((f) => (
+                  <label key={f.key} className="flex flex-col gap-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-2">
+                      {f.label}
+                    </span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      value={numFilters[f.key]}
+                      placeholder={f.ph}
+                      onChange={(e) =>
+                        setNumFilters((s) => ({ ...s, [f.key]: e.target.value }))
+                      }
+                      className="w-full rounded-md border border-border bg-background px-2 py-1 text-[12px] tabular text-foreground placeholder:text-muted-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    />
+                  </label>
+                ))}
+              </div>
+              {numFilterCount > 0 ? (
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNumFilters({ minVol: "", minDepth: "", maxDist: "", minRc: "" })
+                    }
+                    className="text-[11px] text-muted hover:text-foreground"
+                  >
+                    Clear filters
+                  </button>
+                </div>
+              ) : null}
+            </div>
           ) : null}
         </div>
         <MarketTable
