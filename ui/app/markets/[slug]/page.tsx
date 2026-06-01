@@ -17,6 +17,7 @@ import { TradeSizeDistribution } from "@/components/TradeSizeDistribution";
 import { ShareButtons } from "@/components/ShareButtons";
 import { TriggerAlertButton } from "@/components/TriggerAlertButton";
 import { DisqusComments } from "@/components/DisqusComments";
+import { TopHolders } from "@/components/TopHolders";
 import { cn } from "@/lib/cn";
 import { getMarketBySlug } from "@/lib/data";
 import {
@@ -218,6 +219,14 @@ export default async function MarketDetailPage({ params, searchParams }: Props) 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
             <TradePressureBar tokenYes={row.tokenYes ?? null} />
             <TradeSizeDistribution
+              tokenYes={row.tokenYes ?? null}
+              tokenNo={row.tokenNo ?? null}
+            />
+          </div>
+
+          <div className="mt-6">
+            <TopHolders
+              slug={row.slug}
               tokenYes={row.tokenYes ?? null}
               tokenNo={row.tokenNo ?? null}
             />
