@@ -90,17 +90,55 @@ function cacheSet(key: string, result: Result) {
 // shared Etherscan quota.
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 30;
+// Bound the rate-limit table so a churn of distinct client IPs can't grow it
+// without limit on a long-lived warm instance.
+const RATE_MAX_KEYS = 5000;
 const hits = new Map<string, { count: number; windowStart: number }>();
+
+function pruneHits(now: number) {
+  // Drop entries whose window has already expired …
+  for (const [k, rec] of hits) {
+    if (now - rec.windowStart > RATE_WINDOW_MS) hits.delete(k);
+  }
+  // … and if everything is still fresh, evict the oldest-inserted half.
+  if (hits.size >= RATE_MAX_KEYS) {
+    const drop = hits.size - Math.floor(RATE_MAX_KEYS / 2);
+    let i = 0;
+    for (const k of hits.keys()) {
+      if (i++ >= drop) break;
+      hits.delete(k);
+    }
+  }
+}
 
 function rateLimited(ip: string): boolean {
   const now = Date.now();
   const rec = hits.get(ip);
   if (!rec || now - rec.windowStart > RATE_WINDOW_MS) {
+    if (hits.size >= RATE_MAX_KEYS) pruneHits(now);
     hits.set(ip, { count: 1, windowStart: now });
     return false;
   }
   rec.count += 1;
   return rec.count > RATE_MAX;
+}
+
+/**
+ * Best-effort client IP for rate-limiting. Prefer the platform-set x-real-ip
+ * (Vercel populates it with the actual connecting address); fall back to the
+ * LAST — closest-trusted — hop of X-Forwarded-For. Never the leftmost XFF
+ * entry, which is fully client-controlled and was trivially spoofable to dodge
+ * the limit. Per-instance and best-effort, same caveat as the cache above.
+ */
+function clientIp(req: NextRequest): string {
+  const real = req.headers.get("x-real-ip")?.trim();
+  if (real) return real;
+  const xff = req.headers.get("x-forwarded-for");
+  if (xff) {
+    const parts = xff.split(",").map((s) => s.trim()).filter(Boolean);
+    if (parts.length > 0) return parts[parts.length - 1];
+  }
+  return "unknown";
 }
 
 export async function GET(req: NextRequest) {
@@ -112,9 +150,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const ip =
-    (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() ||
-    "unknown";
+  const ip = clientIp(req);
   if (rateLimited(ip)) {
     return NextResponse.json(
       { error: "Rate limit exceeded — try again in a minute." },
