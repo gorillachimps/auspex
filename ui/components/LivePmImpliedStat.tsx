@@ -75,6 +75,11 @@ export function LivePmImpliedStat({
         )}
       >
         {effective != null ? fmtImpliedPct(effective) : "—"}
+        {effective != null ? (
+          <span className="ml-2 align-baseline text-[12px] font-normal text-muted">
+            ${effective.toFixed(2)}/share
+          </span>
+        ) : null}
       </div>
       {bestBid != null && bestAsk != null ? (
         <div className="tabular text-[11px] text-muted">
