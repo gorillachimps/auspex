@@ -11,15 +11,14 @@ import { LoadingState } from "./ui/LoadingState";
  * Polymarket's public leaderboard (https://lb-api.polymarket.com):
  *   - /profit  → top realized P&L all-time
  *   - /volume  → top notional traded all-time
- * Both return `{ proxyWallet, pseudonym, name, amount, … }` pre-sorted desc,
- * wildcard CORS. We fetch BOTH once and merge by wallet so each card can show
- * profit AND volume AND a return-on-volume efficiency read — a "who's worth
- * copying" surface rather than a single-metric list. The Profit/Volume tabs
- * just re-rank the already-fetched data client-side (no refetch).
- *
- * Win-rate per entry is intentionally NOT here: it needs each wallet's full
- * /trades history (100 wallets × paginated fetches), which belongs behind a
- * cached server-side precompute, not a per-render client fan-out.
+ * Both return `{ proxyWallet, pseudonym, name, amount, … }` pre-sorted desc.
+ * We fetch BOTH once and merge by wallet so each card shows profit AND volume
+ * AND a return-on-volume efficiency read — plus win-rate from our own CI-built
+ * /leaderboard-stats.json (the public API has no win-rate; it needs each
+ * wallet's /trades history, precomputed every 6h — see
+ * scripts/build-leaderboard-stats.ts). Win-rate is best-effort: if the stats
+ * file is absent the cards simply omit it. The Profit/Volume tabs re-rank the
+ * already-fetched data client-side (no refetch).
  */
 
 const LB_HOST = "https://lb-api.polymarket.com";
@@ -31,12 +30,21 @@ type LbEntry = {
   name?: string;
 };
 
+type WalletStat = {
+  winRate: number | null;
+  closedCount: number;
+  realized30d: number;
+  realizedTotal: number;
+};
+
 type Mode = "profit" | "volume";
 
 type Merged = {
   proxyWallet: string;
   profit: number | null;
   volume: number | null;
+  winRate: number | null;
+  closed: number;
   pseudonym?: string;
   name?: string;
 };
@@ -44,11 +52,18 @@ type Merged = {
 type State = {
   profit: LbEntry[] | null;
   volume: LbEntry[] | null;
+  stats: Record<string, WalletStat>;
   loading: boolean;
   error: string | null;
 };
 
-const ZERO: State = { profit: null, volume: null, loading: true, error: null };
+const ZERO: State = {
+  profit: null,
+  volume: null,
+  stats: {},
+  loading: true,
+  error: null,
+};
 
 function parseList(data: unknown): LbEntry[] {
   if (!Array.isArray(data)) return [];
@@ -81,18 +96,33 @@ export function LeaderboardView() {
     setState(ZERO);
     (async () => {
       try {
-        const [pr, vr] = await Promise.all([
+        const [pr, vr, sr] = await Promise.all([
           fetch(`${LB_HOST}/profit`, { cache: "no-store" }),
           fetch(`${LB_HOST}/volume`, { cache: "no-store" }),
+          // Our CI-built win-rate file. Best-effort — absent before the first
+          // cron run; the cards just omit win-rate. Never fails the leaderboard.
+          fetch(`/leaderboard-stats.json`, { cache: "no-store" }).catch(() => null),
         ]);
         if (!pr.ok || !vr.ok) {
           throw new Error(`HTTP ${pr.ok ? vr.status : pr.status}`);
         }
         const [pd, vd] = await Promise.all([pr.json(), vr.json()]);
+        let stats: Record<string, WalletStat> = {};
+        if (sr && sr.ok) {
+          try {
+            const sd = await sr.json();
+            if (sd && typeof sd === "object" && sd.stats && typeof sd.stats === "object") {
+              stats = sd.stats as Record<string, WalletStat>;
+            }
+          } catch {
+            // malformed stats file → skip enrichment, keep the leaderboard
+          }
+        }
         if (cancelled) return;
         setState({
           profit: parseList(pd),
           volume: parseList(vd),
+          stats,
           loading: false,
           error: null,
         });
@@ -101,6 +131,7 @@ export function LeaderboardView() {
           setState({
             profit: null,
             volume: null,
+            stats: {},
             loading: false,
             error: (e as Error).message,
           });
@@ -112,7 +143,7 @@ export function LeaderboardView() {
     };
   }, []);
 
-  // Merge the two leaderboards by wallet.
+  // Merge the two leaderboards by wallet, then attach precomputed win-rate.
   const byWallet = useMemo(() => {
     const m = new Map<string, Merged>();
     for (const e of state.profit ?? []) {
@@ -120,6 +151,8 @@ export function LeaderboardView() {
         proxyWallet: e.proxyWallet,
         profit: e.amount,
         volume: null,
+        winRate: null,
+        closed: 0,
         pseudonym: e.pseudonym,
         name: e.name,
       });
@@ -135,15 +168,23 @@ export function LeaderboardView() {
           proxyWallet: e.proxyWallet,
           profit: null,
           volume: e.amount,
+          winRate: null,
+          closed: 0,
           pseudonym: e.pseudonym,
           name: e.name,
         });
       }
     }
+    for (const entry of m.values()) {
+      const s = state.stats[entry.proxyWallet];
+      if (s) {
+        entry.winRate = s.winRate;
+        entry.closed = s.closedCount;
+      }
+    }
     return m;
-  }, [state.profit, state.volume]);
+  }, [state.profit, state.volume, state.stats]);
 
-  // Ranked list follows the active tab's ordering (already sorted desc).
   const ranked = useMemo(() => {
     const order = mode === "profit" ? state.profit : state.volume;
     if (!order) return [];
@@ -241,6 +282,7 @@ function TabButton({
 }
 
 const TAG_TONE: Record<string, string> = {
+  sharp: "bg-accent/15 text-accent ring-accent/40",
   whale: "bg-fuchsia-500/15 text-fuchsia-200 ring-fuchsia-400/40",
   edge: "bg-emerald-500/15 text-emerald-200 ring-emerald-400/40",
   grinder: "bg-sky-500/15 text-sky-200 ring-sky-400/40",
@@ -250,6 +292,13 @@ const TAG_TONE: Record<string, string> = {
 function tagsFor(e: Merged): { label: string; tone: string; hint: string }[] {
   const tags: { label: string; tone: string; hint: string }[] = [];
   const rov = returnOnVolume(e);
+  if (e.winRate != null && e.closed >= 20 && e.winRate >= 0.5) {
+    tags.push({
+      label: "Sharp",
+      tone: "sharp",
+      hint: `${Math.round(e.winRate * 100)}% win rate over ${e.closed} closed positions`,
+    });
+  }
   if ((e.volume ?? 0) >= 1_000_000) {
     tags.push({ label: "Whale", tone: "whale", hint: "≥ $1M traded all-time" });
   }
@@ -292,7 +341,6 @@ function LeaderboardCard({
         : rank === 3
           ? "bg-orange-500/15 text-orange-200 ring-orange-400/40"
           : "bg-surface-2 text-muted ring-border";
-  const rov = returnOnVolume(entry);
   const tags = tagsFor(entry);
   return (
     <a
@@ -326,9 +374,7 @@ function LeaderboardCard({
         <Metric
           label="Profit"
           highlight={mode === "profit"}
-          value={
-            entry.profit == null ? "—" : fmtUSDSignedText(entry.profit)
-          }
+          value={entry.profit == null ? "—" : fmtUSDSignedText(entry.profit)}
           tone={
             entry.profit == null
               ? "neutral"
@@ -346,10 +392,14 @@ function LeaderboardCard({
           tone="neutral"
         />
         <Metric
-          label="Return"
-          value={rov == null ? "—" : `${(rov * 100).toFixed(1)}%`}
-          tone={rov == null ? "neutral" : rov > 0 ? "pos" : rov < 0 ? "neg" : "neutral"}
-          hint="Realized profit ÷ volume traded"
+          label="Win"
+          value={
+            entry.winRate != null && entry.closed >= 10
+              ? `${Math.round(entry.winRate * 100)}%`
+              : "—"
+          }
+          tone="neutral"
+          hint="Profit rate on closed (sold) positions over recent history. Positions held to resolution aren't counted, so this skews low."
         />
       </div>
 
