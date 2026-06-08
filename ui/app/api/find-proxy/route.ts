@@ -217,7 +217,9 @@ function buildEtherscanUrl(apiKey: string): URL {
   return url;
 }
 
-/** True iff `address` has non-empty bytecode on Polygon (i.e. is deployed). */
+/** True iff `address` has non-empty bytecode on Polygon (i.e. is deployed).
+ *  Throws on an upstream error so the caller never mistakes an error response
+ *  (e.g. "Max rate limit reached") for deployed bytecode. */
 async function isDeployed(address: string, apiKey: string): Promise<boolean> {
   const url = new URL("https://api.etherscan.io/v2/api");
   url.searchParams.set("chainid", "137");
@@ -228,9 +230,17 @@ async function isDeployed(address: string, apiKey: string): Promise<boolean> {
   url.searchParams.set("apikey", apiKey);
   const r = await fetch(url.toString(), { cache: "no-store" });
   if (!r.ok) throw new Error(`Etherscan HTTP ${r.status}`);
-  const body = (await r.json()) as { result?: unknown };
-  // "0x" = no code; any longer hex string = deployed.
-  return typeof body.result === "string" && body.result.length > 2;
+  const body = (await r.json()) as { result?: unknown; message?: string };
+  const result = body.result;
+  // Only a real hex string is authoritative: "0x" = not deployed; a longer
+  // 0x-hex string = deployed. ANYTHING else ("Max rate limit reached",
+  // "NOTOK", "Invalid API Key", …) is an upstream error — throw, never guess.
+  if (typeof result === "string" && /^0x[0-9a-fA-F]*$/.test(result)) {
+    return result.length > 2;
+  }
+  throw new Error(
+    `Etherscan getCode error: ${body.message ?? String(result).slice(0, 60)}`,
+  );
 }
 
 async function forwardLookup(eoa: string, apiKey: string): Promise<Result> {
@@ -238,35 +248,47 @@ async function forwardLookup(eoa: string, apiKey: string): Promise<Result> {
     return { status: 400, body: { error: "Invalid EOA address." }, ttlMs: 0 };
   }
 
-  try {
-    // Derive every candidate account address (both deposit-wallet variants,
-    // Safe, proxy), check deployment in parallel, and return the first deployed
-    // one in Polymarket's classifyWalletType priority order. Deterministic +
-    // deployment-gated, so it never returns a wrong or not-yet-real address.
-    const candidates = deriveCandidates(eoa as Address);
-    const deployed = await Promise.all(
-      candidates.map((c) => isDeployed(c.address, apiKey)),
-    );
-    const hit = candidates.find((_, i) => deployed[i]);
-    if (hit) {
-      return {
-        status: 200,
-        body: {
-          proxy: hit.address,
-          proxyType: hit.type,
-          // CLOB SignatureType for this account: POLY_PROXY=1,
-          // POLY_GNOSIS_SAFE=2, POLY_1271=3.
-          signatureType: hit.signatureType,
-        },
-        ttlMs: TTL_FOUND,
-      };
+  // Normalize to lowercase: viem's address codecs throw on a mixed-case string
+  // that fails EIP-55 checksum, and the CREATE2 salt is case-insensitive anyway.
+  const candidates = deriveCandidates(eoa.toLowerCase() as Address);
+
+  // Check candidates SEQUENTIALLY in Polymarket's classifyWalletType priority
+  // order and return the first deployed one. Sequential (not parallel) so we
+  // don't burst the shared Etherscan key into a rate-limit — a rate-limited
+  // response is not valid bytecode and must never read as "deployed". If a
+  // single candidate's check errors we keep going, so one flaky call can't hide
+  // a real account on another type.
+  let hadError = false;
+  for (const c of candidates) {
+    try {
+      if (await isDeployed(c.address, apiKey)) {
+        return {
+          status: 200,
+          body: {
+            proxy: c.address,
+            proxyType: c.type,
+            // CLOB SignatureType: POLY_PROXY=1, POLY_GNOSIS_SAFE=2, POLY_1271=3.
+            signatureType: c.signatureType,
+          },
+          ttlMs: TTL_FOUND,
+        };
+      }
+    } catch {
+      hadError = true;
     }
-    // No derived account is deployed for this signer — a brand-new wallet that
-    // hasn't created a Polymarket account yet. Caller offers create/paste.
-    return { status: 200, body: { proxy: null }, ttlMs: TTL_MISS };
-  } catch (e) {
-    return { status: 500, body: { error: (e as Error).message }, ttlMs: 0 };
   }
+  if (hadError) {
+    // Couldn't conclusively check every candidate — surface "couldn't check"
+    // (the client treats this as unavailable), never a false "no account".
+    return {
+      status: 502,
+      body: { error: "Upstream lookup error — please retry." },
+      ttlMs: 0,
+    };
+  }
+  // Every candidate checked cleanly and none is deployed — a brand-new wallet
+  // with no Polymarket account yet. Caller offers create/paste.
+  return { status: 200, body: { proxy: null }, ttlMs: TTL_MISS };
 }
 
 async function reverseLookup(proxy: string, apiKey: string): Promise<Result> {
