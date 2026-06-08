@@ -71,7 +71,11 @@ export function toScreenerUrl(f: SavedFilter): string {
   if (f.search) params.set("q", f.search);
   if (f.starred) params.set("starred", "1");
   if (f.live) params.set("live", "1");
-  if (f.sort && f.sort !== "volume24h:desc") params.set("sort", f.sort);
+  // Reproduce whatever sort was saved, verbatim. (Previously this omitted
+  // "volume24h:desc" as "the default" — but the screener default later changed
+  // to "days:asc", so a view saved with the old default silently lost its sort
+  // on reload. Don't couple to a default that can drift; just round-trip it.)
+  if (f.sort) params.set("sort", f.sort);
   const qs = params.toString();
   return qs ? `/?${qs}` : "/";
 }
