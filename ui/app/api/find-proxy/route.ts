@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getCreate2Address,
-  keccak256,
-  encodeAbiParameters,
-  encodePacked,
-  type Address,
-  type Hex,
-} from "viem";
+import { type Address } from "viem";
+import { deriveCandidates } from "@/lib/polymarketDerive";
 
 /**
  * find-proxy: resolve the Polymarket account (proxy) for a wallet.
@@ -38,18 +32,9 @@ import {
  * never as "no account".
  */
 
-// --- Deterministic derivation (forward lookup: EOA → account) --------------
-// Verified against Polymarket's official test vectors and a live MetaMask
-// account. Salt encodings DIFFER per type (Safe uses abi.encode → 32-byte
-// padded; Proxy uses encodePacked → raw 20 bytes) — do not unify them.
-const SAFE_FACTORY = "0xaacFeEa03eb1561C4e67d661e40682Bd20E3541b" as Address;
-const SAFE_INIT_CODE_HASH =
-  "0x2bce2127ff07fb632d16c8347c4ebf501f4841168bed00d9e6ef715ddb6fcecf" as Hex;
-const PROXY_FACTORY = "0xaB45c5A4B0c941a2F231C04C3f49182e1A254052" as Address;
-const PROXY_INIT_CODE_HASH =
-  "0xd21df8dc65880a8606f09fe0ce3df9b8869287ab0b058be05aa9e8af6330a00b" as Hex;
-
-// --- Reverse lookup (proxy → owners) still scans logs ----------------------
+// Forward lookup (EOA → account) is deterministic CREATE2 derivation, in
+// lib/polymarketDerive.ts (shared with the client). --- Reverse lookup
+// (proxy → owners) still scans logs ----------------------
 // keccak256("OwnershipTransferred(address,address)")
 const OWNERSHIP_TRANSFERRED_TOPIC =
   "0x8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0";
@@ -232,28 +217,6 @@ function buildEtherscanUrl(apiKey: string): URL {
   return url;
 }
 
-/** Derive the deterministic Polymarket account address(es) for a signer EOA,
- *  in preference order (MetaMask Safe first, Magic proxy second). Pure CREATE2
- *  — no network call. */
-function deriveCandidates(
-  eoa: Address,
-): { type: "safe" | "proxy"; signatureType: 1 | 2; address: Address }[] {
-  const safe = getCreate2Address({
-    from: SAFE_FACTORY,
-    salt: keccak256(encodeAbiParameters([{ type: "address" }], [eoa])),
-    bytecodeHash: SAFE_INIT_CODE_HASH,
-  });
-  const proxy = getCreate2Address({
-    from: PROXY_FACTORY,
-    salt: keccak256(encodePacked(["address"], [eoa])),
-    bytecodeHash: PROXY_INIT_CODE_HASH,
-  });
-  return [
-    { type: "safe", signatureType: 2, address: safe },
-    { type: "proxy", signatureType: 1, address: proxy },
-  ];
-}
-
 /** True iff `address` has non-empty bytecode on Polygon (i.e. is deployed). */
 async function isDeployed(address: string, apiKey: string): Promise<boolean> {
   const url = new URL("https://api.etherscan.io/v2/api");
@@ -276,29 +239,30 @@ async function forwardLookup(eoa: string, apiKey: string): Promise<Result> {
   }
 
   try {
-    // Derive the candidate account address(es) and return the first one that
-    // is actually deployed on-chain. Deterministic + deployment-gated, so it
-    // never returns a random contract the EOA merely interacted with, and
-    // never a not-yet-real address.
+    // Derive every candidate account address (both deposit-wallet variants,
+    // Safe, proxy), check deployment in parallel, and return the first deployed
+    // one in Polymarket's classifyWalletType priority order. Deterministic +
+    // deployment-gated, so it never returns a wrong or not-yet-real address.
     const candidates = deriveCandidates(eoa as Address);
-    for (const c of candidates) {
-      if (await isDeployed(c.address, apiKey)) {
-        return {
-          status: 200,
-          body: {
-            proxy: c.address,
-            proxyType: c.type,
-            // CLOB SignatureType to sign orders with for this account
-            // (POLY_PROXY = 1, POLY_GNOSIS_SAFE = 2).
-            signatureType: c.signatureType,
-          },
-          ttlMs: TTL_FOUND,
-        };
-      }
+    const deployed = await Promise.all(
+      candidates.map((c) => isDeployed(c.address, apiKey)),
+    );
+    const hit = candidates.find((_, i) => deployed[i]);
+    if (hit) {
+      return {
+        status: 200,
+        body: {
+          proxy: hit.address,
+          proxyType: hit.type,
+          // CLOB SignatureType for this account: POLY_PROXY=1,
+          // POLY_GNOSIS_SAFE=2, POLY_1271=3.
+          signatureType: hit.signatureType,
+        },
+        ttlMs: TTL_FOUND,
+      };
     }
-    // No derived account is deployed for this signer — a brand-new wallet, or a
-    // proxy type we don't yet derive (e.g. Deposit Wallet / POLY_1271). Caller
-    // falls back to manual paste.
+    // No derived account is deployed for this signer — a brand-new wallet that
+    // hasn't created a Polymarket account yet. Caller offers create/paste.
     return { status: 200, body: { proxy: null }, ttlMs: TTL_MISS };
   } catch (e) {
     return { status: 500, body: { error: (e as Error).message }, ttlMs: 0 };

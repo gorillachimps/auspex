@@ -10,13 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import {
-  createPublicClient,
-  createWalletClient,
-  custom,
-  http,
-  type WalletClient,
-} from "viem";
+import { createWalletClient, custom, type WalletClient } from "viem";
 import { polygon } from "viem/chains";
 import type { ClobClient } from "@polymarket/clob-client-v2";
 import { toast } from "sonner";
@@ -27,11 +21,9 @@ import {
   writeFunderAddress,
   FUNDER_CHANGED_EVENT,
 } from "./polymarket";
-import { isPrivyConfigured, POLYGON_RPC_URL } from "./env-client";
-import {
-  findPolymarketProxy,
-  findProxyOwners,
-} from "./findPolymarketProxy";
+import { isPrivyConfigured } from "./env-client";
+import { findPolymarketProxy } from "./findPolymarketProxy";
+import { classifyProxy } from "./polymarketDerive";
 
 export type ClobSessionStatus =
   | "disabled" // Privy not configured
@@ -43,14 +35,6 @@ export type ClobSessionStatus =
   | "deriving" // Authenticating with Polymarket (signing L1 message)
   | "ready" // Fully authenticated; client available
   | "error";
-
-// Module-scoped read-only client for the bytecode check during auto-link.
-// We don't use the wagmi-bound publicClient here because useClobSession runs
-// upstream of the wagmi provider in some render orders during hydration.
-const polygonReadClient = createPublicClient({
-  chain: polygon,
-  transport: http(POLYGON_RPC_URL),
-});
 
 export type ClobSession = {
   status: ClobSessionStatus;
@@ -121,19 +105,14 @@ function useClobSessionState(): ClobSession {
     setFunder(readFunderAddress(eoa));
   }, [eoa, refreshTick]);
 
-  // Auto-link: when a wallet connects and has no cached funder, try to find
-  // their Polymarket proxy on-chain via /api/find-proxy. If the result passes
-  // validation (the proxy is a contract AND the connected EOA is in its
-  // owners list), save it silently — no dialog, no extra click. This is the
-  // happy path for users who already have a Polymarket account.
+  // Auto-link: when a wallet connects and has no cached funder, derive their
+  // Polymarket account via /api/find-proxy (deterministic CREATE2 + on-chain
+  // deployment check) and save it silently — no dialog, no extra click. This is
+  // the happy path for everyone who already has a Polymarket account, of any
+  // type (Safe / Magic proxy / Deposit Wallet).
   //
-  // Falls through to the dialog-based manual entry when:
-  //   - find-proxy returns no result (user has no Polymarket account yet)
-  //   - find-proxy succeeds but bytecode check fails (proxy address doesn't
-  //     exist on-chain — shouldn't happen but defensive)
-  //   - reverse-owner check fails (proxy isn't owned by this EOA — also a
-  //     defensive guard, since find-proxy already filters by owner)
-  //   - any RPC / network failure → fail open, user gets the dialog
+  // Falls through to the dialog only when find-proxy returns nothing (a
+  // brand-new wallet with no account yet) or on any network failure (fail open).
   useEffect(() => {
     if (!eoa || !walletClient) return;
     if (funder) return; // cached funder; nothing to auto-detect
@@ -147,34 +126,11 @@ function useClobSessionState(): ClobSession {
       try {
         const lookup = await findPolymarketProxy(eoa);
         if (cancelled) return;
-        if (!lookup.proxy) return; // no Polymarket account → fall to no-funder
+        if (!lookup.proxy) return; // no deployed account derived → no-funder
 
-        // Step 1: bytecode check.
-        let hasBytecode = false;
-        try {
-          const code = await polygonReadClient.getCode({
-            address: lookup.proxy,
-          });
-          hasBytecode = !!code && code !== "0x";
-        } catch {
-          // RPC error: don't auto-save, fall through to dialog so the user
-          // can review what we found.
-          return;
-        }
-        if (cancelled) return;
-        if (!hasBytecode) return;
-
-        // Step 2: reverse-owner check (when API key is configured).
-        const owners = await findProxyOwners(lookup.proxy);
-        if (cancelled) return;
-        if (owners.available && owners.owners.length > 0) {
-          const isOwner = owners.owners.some(
-            (o) => o.toLowerCase() === eoa.toLowerCase(),
-          );
-          if (!isOwner) return; // proxy belongs to a different wallet
-        }
-
-        // All checks passed. Save silently and surface a toast.
+        // find-proxy derives this address from the connected EOA and confirms
+        // it's deployed on-chain, so it's guaranteed to be this wallet's
+        // account — save it silently.
         writeFunderAddress(eoa, lookup.proxy);
         toast.success(
           `Linked your Polymarket account ${lookup.proxy.slice(0, 6)}…${lookup.proxy.slice(-4)}`,
@@ -310,10 +266,20 @@ function useClobSessionState(): ClobSession {
       const gen = deriveGen.current;
       const capturedWallet = walletClient;
       const capturedFunder = funder;
+      // Classify the funder against the EOA (pure CREATE2, no network) so we
+      // authenticate and sign with the correct CLOB signature type —
+      // Safe(2) / Magic-proxy(1) / Deposit-Wallet(3). Falls back to deposit
+      // (POLY_1271) if the funder isn't derivable from this EOA.
+      const capturedProxyType = classifyProxy(eoa, capturedFunder) ?? "deposit";
       const stale = () => deriveGen.current !== gen;
       const promise = (async () => {
         try {
-          const creds = await ensureCreds(capturedWallet, eoa, capturedFunder);
+          const creds = await ensureCreds(
+            capturedWallet,
+            eoa,
+            capturedFunder,
+            capturedProxyType,
+          );
           // Bail if the wallet/funder changed while we were signing — do not
           // build or surface a client bound to a now-stale funder.
           if (stale()) {
@@ -325,6 +291,7 @@ function useClobSessionState(): ClobSession {
             walletClient: capturedWallet,
             funderAddress: capturedFunder,
             creds,
+            proxyType: capturedProxyType,
           });
           if (stale()) {
             throw new Error(

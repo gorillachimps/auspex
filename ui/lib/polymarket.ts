@@ -10,6 +10,22 @@ import {
   type TickSize,
 } from "@polymarket/clob-client-v2";
 import type { WalletClient } from "viem";
+import type { ProxyType } from "./polymarketDerive";
+
+/** Map a derived Polymarket account kind to the CLOB signature type its orders
+ *  must be signed with. Unknown/missing → POLY_1271 (the deposit-wallet flow),
+ *  which is the historical default, so existing links keep working. */
+function sigTypeFor(proxyType?: ProxyType): SignatureTypeV2 {
+  switch (proxyType) {
+    case "proxy":
+      return SignatureTypeV2.POLY_PROXY;
+    case "safe":
+      return SignatureTypeV2.POLY_GNOSIS_SAFE;
+    case "deposit":
+    default:
+      return SignatureTypeV2.POLY_1271;
+  }
+}
 
 /** Auspex builder code (bytes32). Registered 2026-05-06.
  *  Operator wallet (proxy): 0xb4fb45069b3f0f7c69937ca114849f5a8380da04 */
@@ -41,26 +57,30 @@ export type ClobSetup = {
   creds: ApiKeyCreds;
 };
 
-/** Build a ClobClient configured for V2 + builder code + signature type 3
- *  (POLY_1271 / Polymarket deposit-wallet flow). */
+/** Build a ClobClient configured for V2 + builder code, signing orders with the
+ *  signature type that matches the user's account kind (`proxyType`): Safe →
+ *  POLY_GNOSIS_SAFE, Magic proxy → POLY_PROXY, Deposit Wallet → POLY_1271.
+ *  Defaults to POLY_1271 when the kind is unknown. */
 export function buildClobClient({
   walletClient,
   funderAddress,
   creds,
-}: Pick<ClobSetup, "walletClient" | "funderAddress" | "creds">): ClobClient {
+  proxyType,
+}: Pick<ClobSetup, "walletClient" | "funderAddress" | "creds"> & {
+  proxyType?: ProxyType;
+}): ClobClient {
   ensureClient();
-  // Defence in depth: signature type 3 is the *deposit-wallet* flow — funder
-  // must be the smart-contract proxy, NOT the signing EOA. Otherwise the API
-  // rejects with "the order signer address has to be the address of the API
-  // KEY". The UI dialog already blocks this, but catch any other code path
-  // that could feed us a misconfigured pair.
+  // Defence in depth: the funder must be the smart-contract account proxy, NOT
+  // the signing EOA — for every account type the maker is the proxy and the
+  // signer is the EOA. A signer==funder pair posts orders the API rejects with
+  // "the order signer address has to be the address of the API KEY".
   const signerAddress = walletClient.account?.address;
   if (
     signerAddress &&
     signerAddress.toLowerCase() === funderAddress.toLowerCase()
   ) {
     throw new Error(
-      "Funder address must be the deposit-wallet proxy, not the signing EOA — refusing to construct a ClobClient that would post broken orders.",
+      "Funder must be the Polymarket account proxy, not the signing EOA — refusing to construct a ClobClient that would post broken orders.",
     );
   }
   return new ClobClient({
@@ -68,7 +88,7 @@ export function buildClobClient({
     chain: POLYMARKET_CHAIN,
     signer: walletClient,
     creds,
-    signatureType: SignatureTypeV2.POLY_1271,
+    signatureType: sigTypeFor(proxyType),
     funderAddress,
     builderConfig: { builderCode: BUILDER_CODE },
     throwOnError: true,
@@ -129,6 +149,7 @@ export async function ensureCreds(
   walletClient: WalletClient,
   signerAddress: `0x${string}`,
   funderAddress: `0x${string}`,
+  proxyType?: ProxyType,
 ): Promise<ApiKeyCreds> {
   const cached = readCachedCreds(signerAddress, funderAddress);
   if (cached) return cached;
@@ -147,7 +168,7 @@ export async function ensureCreds(
       host: CLOB_HOST,
       chain: POLYMARKET_CHAIN,
       signer: walletClient,
-      signatureType: SignatureTypeV2.POLY_1271,
+      signatureType: sigTypeFor(proxyType),
       funderAddress,
     });
     try {
