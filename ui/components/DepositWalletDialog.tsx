@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { usePublicClient } from "wagmi";
+import { erc20Abi } from "viem";
 import { polygon } from "viem/chains";
 import { writeFunderAddress } from "@/lib/polymarket";
 import { useFocusTrap } from "@/lib/useFocusTrap";
@@ -28,6 +29,8 @@ type Props = {
 };
 
 const POLYMARKET_URL = "https://polymarket.com";
+// Polymarket's collateral token on Polygon (USDC.e), 6 decimals.
+const USDC_E = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174" as const;
 
 /**
  * Links the connected wallet to the user's Polymarket account (the
@@ -72,6 +75,9 @@ export function DepositWalletDialog({
   const [detectOutcome, setDetectOutcome] = useState<
     "idle" | "none" | "unavailable"
   >("idle");
+  /** USDC.e balance of the detected/entered account (null = unknown/loading),
+   *  so the found view can show it and nudge funding when it's empty. */
+  const [funderBalance, setFunderBalance] = useState<number | null>(null);
   const detectedFor = useRef<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -165,6 +171,33 @@ export function DepositWalletDialog({
       window.removeEventListener("focus", onFocus);
     };
   }, [open, awaitingCreate, eoa, isValid]);
+
+  // Read the detected/entered account's USDC.e balance (client-side, browser
+  // RPC) so the found view can show it and nudge funding when it's empty.
+  useEffect(() => {
+    if (!open || !isValid || !publicClient) {
+      setFunderBalance(null);
+      return;
+    }
+    let cancelled = false;
+    setFunderBalance(null);
+    publicClient
+      .readContract({
+        address: USDC_E,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [trimmed as `0x${string}`],
+      })
+      .then((raw) => {
+        if (!cancelled) setFunderBalance(Number(raw) / 1e6);
+      })
+      .catch(() => {
+        if (!cancelled) setFunderBalance(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isValid, trimmed, publicClient]);
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -381,20 +414,39 @@ export function DepositWalletDialog({
               ) : null}
             </div>
 
-            {/* Need USDC? Bridge straight into the detected account. */}
-            <div className="mt-3 flex items-start justify-between gap-3 rounded-md border border-border bg-surface-2/40 px-3 py-2">
-              <div className="text-[11px] text-muted">
-                <div className="text-foreground">Need USDC to trade?</div>
-                <div className="mt-0.5 text-muted-2">
-                  Bridge from any chain straight into your account.
-                </div>
+            {/* Balance + funding nudge — show the account's USDC so there's no
+                dead-end between "found your account" and being able to bet. */}
+            {funderBalance != null && funderBalance >= 1 ? (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-emerald-400/30 bg-emerald-500/5 px-3 py-2 text-[11px]">
+                <span className="text-emerald-300">
+                  Funded · ${funderBalance.toFixed(2)} USDC — ready to bet
+                </span>
+                <BridgeButton
+                  toAddress={trimmed as `0x${string}`}
+                  variant="secondary"
+                  label="Add"
+                />
               </div>
-              <BridgeButton
-                toAddress={trimmed as `0x${string}`}
-                variant="secondary"
-                label="Bridge"
-              />
-            </div>
+            ) : (
+              <div className="mt-3 flex items-start justify-between gap-3 rounded-md border border-border bg-surface-2/40 px-3 py-2">
+                <div className="text-[11px] text-muted">
+                  <div className="text-foreground">
+                    {funderBalance != null
+                      ? "This account needs USDC to bet"
+                      : "Need USDC to trade?"}
+                  </div>
+                  <div className="mt-0.5 text-muted-2">
+                    Add funds from any chain to get started — betting itself is
+                    gas-free.
+                  </div>
+                </div>
+                <BridgeButton
+                  toAddress={trimmed as `0x${string}`}
+                  variant="primary"
+                  label="Add funds"
+                />
+              </div>
+            )}
 
             <button
               type="button"
