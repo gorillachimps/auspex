@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { type Address } from "viem";
+import { createPublicClient, fallback, http, type Address } from "viem";
+import { polygon } from "viem/chains";
 import { deriveCandidates } from "@/lib/polymarketDerive";
+
+// Read-only Polygon client for deployment checks. eth_getCode is a basic RPC
+// read, so we use public RPCs with fallback rather than the keyed Etherscan
+// endpoint — whose shared 5/sec rate limit made a burst of getCode calls flaky
+// (a rate-limited reply is an error STRING that a naive check misreads as
+// "deployed"). viem returns the bytecode or undefined and throws on transport
+// failure — it can never hand back an error string. `batch` groups the
+// candidate lookups into one JSON-RPC request.
+const codeClient = createPublicClient({
+  chain: polygon,
+  transport: fallback([
+    http("https://1rpc.io/matic", { batch: true }),
+    http("https://polygon-bor-rpc.publicnode.com", { batch: true }),
+    http("https://rpc.ankr.com/polygon", { batch: true }),
+  ]),
+});
 
 /**
  * find-proxy: resolve the Polymarket account (proxy) for a wallet.
@@ -143,12 +160,6 @@ function clientIp(req: NextRequest): string {
 
 export async function GET(req: NextRequest) {
   const apiKey = process.env.POLYGONSCAN_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Auto-detect not configured on this deployment." },
-      { status: 503 },
-    );
-  }
 
   const ip = clientIp(req);
   if (rateLimited(ip)) {
@@ -180,9 +191,17 @@ export async function GET(req: NextRequest) {
 
   let result: Result;
   if (eoa) {
-    result = await forwardLookup(eoa, apiKey);
+    // Forward (auto-detect) uses public RPCs — no Etherscan key needed.
+    result = await forwardLookup(eoa);
   } else if (proxyParam) {
-    result = await reverseLookup(proxyParam, apiKey);
+    // Reverse (owner check) still uses the keyed Etherscan log scan.
+    result = apiKey
+      ? await reverseLookup(proxyParam, apiKey)
+      : {
+          status: 503,
+          body: { error: "Owner check not configured on this deployment." },
+          ttlMs: 0,
+        };
   } else {
     result = {
       status: 400,
@@ -217,33 +236,7 @@ function buildEtherscanUrl(apiKey: string): URL {
   return url;
 }
 
-/** True iff `address` has non-empty bytecode on Polygon (i.e. is deployed).
- *  Throws on an upstream error so the caller never mistakes an error response
- *  (e.g. "Max rate limit reached") for deployed bytecode. */
-async function isDeployed(address: string, apiKey: string): Promise<boolean> {
-  const url = new URL("https://api.etherscan.io/v2/api");
-  url.searchParams.set("chainid", "137");
-  url.searchParams.set("module", "proxy");
-  url.searchParams.set("action", "eth_getCode");
-  url.searchParams.set("address", address);
-  url.searchParams.set("tag", "latest");
-  url.searchParams.set("apikey", apiKey);
-  const r = await fetch(url.toString(), { cache: "no-store" });
-  if (!r.ok) throw new Error(`Etherscan HTTP ${r.status}`);
-  const body = (await r.json()) as { result?: unknown; message?: string };
-  const result = body.result;
-  // Only a real hex string is authoritative: "0x" = not deployed; a longer
-  // 0x-hex string = deployed. ANYTHING else ("Max rate limit reached",
-  // "NOTOK", "Invalid API Key", …) is an upstream error — throw, never guess.
-  if (typeof result === "string" && /^0x[0-9a-fA-F]*$/.test(result)) {
-    return result.length > 2;
-  }
-  throw new Error(
-    `Etherscan getCode error: ${body.message ?? String(result).slice(0, 60)}`,
-  );
-}
-
-async function forwardLookup(eoa: string, apiKey: string): Promise<Result> {
+async function forwardLookup(eoa: string): Promise<Result> {
   if (!/^0x[0-9a-fA-F]{40}$/.test(eoa)) {
     return { status: 400, body: { error: "Invalid EOA address." }, ttlMs: 0 };
   }
@@ -252,33 +245,39 @@ async function forwardLookup(eoa: string, apiKey: string): Promise<Result> {
   // that fails EIP-55 checksum, and the CREATE2 salt is case-insensitive anyway.
   const candidates = deriveCandidates(eoa.toLowerCase() as Address);
 
-  // Check candidates SEQUENTIALLY in Polymarket's classifyWalletType priority
-  // order and return the first deployed one. Sequential (not parallel) so we
-  // don't burst the shared Etherscan key into a rate-limit — a rate-limited
-  // response is not valid bytecode and must never read as "deployed". If a
-  // single candidate's check errors we keep going, so one flaky call can't hide
-  // a real account on another type.
+  // Fetch every candidate's bytecode in parallel (one batched JSON-RPC call),
+  // then return the first DEPLOYED one in Polymarket's classifyWalletType
+  // priority order. allSettled so a single RPC hiccup on one candidate can't
+  // hide a real account on another.
+  const results = await Promise.allSettled(
+    candidates.map((c) => codeClient.getCode({ address: c.address })),
+  );
+
   let hadError = false;
-  for (const c of candidates) {
-    try {
-      if (await isDeployed(c.address, apiKey)) {
-        return {
-          status: 200,
-          body: {
-            proxy: c.address,
-            proxyType: c.type,
-            // CLOB SignatureType: POLY_PROXY=1, POLY_GNOSIS_SAFE=2, POLY_1271=3.
-            signatureType: c.signatureType,
-          },
-          ttlMs: TTL_FOUND,
-        };
-      }
-    } catch {
+  for (let i = 0; i < candidates.length; i++) {
+    const res = results[i];
+    if (res.status === "rejected") {
       hadError = true;
+      continue;
+    }
+    const code = res.value; // bytecode hex, or undefined when there's no code
+    if (code && code !== "0x") {
+      const c = candidates[i];
+      return {
+        status: 200,
+        body: {
+          proxy: c.address,
+          proxyType: c.type,
+          // CLOB SignatureType: POLY_PROXY=1, POLY_GNOSIS_SAFE=2, POLY_1271=3.
+          signatureType: c.signatureType,
+        },
+        ttlMs: TTL_FOUND,
+      };
     }
   }
+
   if (hadError) {
-    // Couldn't conclusively check every candidate — surface "couldn't check"
+    // We couldn't conclusively check every candidate — surface "couldn't check"
     // (the client treats this as unavailable), never a false "no account".
     return {
       status: 502,
