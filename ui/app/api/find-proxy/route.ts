@@ -1,23 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createPublicClient, fallback, http, type Address } from "viem";
-import { polygon } from "viem/chains";
+import { type Address } from "viem";
 import { deriveCandidates } from "@/lib/polymarketDerive";
-
-// Read-only Polygon client for deployment checks. eth_getCode is a basic RPC
-// read, so we use public RPCs with fallback rather than the keyed Etherscan
-// endpoint — whose shared 5/sec rate limit made a burst of getCode calls flaky
-// (a rate-limited reply is an error STRING that a naive check misreads as
-// "deployed"). viem returns the bytecode or undefined and throws on transport
-// failure — it can never hand back an error string. `batch` groups the
-// candidate lookups into one JSON-RPC request.
-const codeClient = createPublicClient({
-  chain: polygon,
-  transport: fallback([
-    http("https://1rpc.io/matic", { batch: true }),
-    http("https://polygon-bor-rpc.publicnode.com", { batch: true }),
-    http("https://rpc.ankr.com/polygon", { batch: true }),
-  ]),
-});
 
 /**
  * find-proxy: resolve the Polymarket account (proxy) for a wallet.
@@ -191,10 +174,14 @@ export async function GET(req: NextRequest) {
 
   let result: Result;
   if (eoa) {
-    // Forward (auto-detect) uses public RPCs — no Etherscan key needed.
-    result = await forwardLookup(eoa);
+    result = apiKey
+      ? await forwardLookup(eoa, apiKey)
+      : {
+          status: 503,
+          body: { error: "Auto-detect not configured on this deployment." },
+          ttlMs: 0,
+        };
   } else if (proxyParam) {
-    // Reverse (owner check) still uses the keyed Etherscan log scan.
     result = apiKey
       ? await reverseLookup(proxyParam, apiKey)
       : {
@@ -236,7 +223,52 @@ function buildEtherscanUrl(apiKey: string): URL {
   return url;
 }
 
-async function forwardLookup(eoa: string): Promise<Result> {
+/** True iff `address` has non-empty bytecode on Polygon. Uses the keyed
+ *  Etherscan endpoint, which (unlike free public RPCs) is reliable from
+ *  serverless/datacenter IPs. Only a real 0x-hex reply is authoritative; a
+ *  rate-limit/error reply (a non-hex string) is retried with backoff, then
+ *  throws — it is NEVER read as "deployed". */
+async function isDeployed(
+  address: string,
+  apiKey: string,
+  attempt = 0,
+): Promise<boolean> {
+  const url = new URL("https://api.etherscan.io/v2/api");
+  url.searchParams.set("chainid", "137");
+  url.searchParams.set("module", "proxy");
+  url.searchParams.set("action", "eth_getCode");
+  url.searchParams.set("address", address);
+  url.searchParams.set("tag", "latest");
+  url.searchParams.set("apikey", apiKey);
+
+  let result: unknown;
+  let message: string | undefined;
+  try {
+    const r = await fetch(url.toString(), { cache: "no-store" });
+    if (r.ok) {
+      const body = (await r.json()) as { result?: unknown; message?: string };
+      result = body.result;
+      message = body.message;
+      if (typeof result === "string" && /^0x[0-9a-fA-F]*$/.test(result)) {
+        return result.length > 2; // "0x" → not deployed; longer hex → deployed
+      }
+    }
+  } catch {
+    // network blip — fall through to retry/throw
+  }
+  // Non-hex result (rate limit / NOTOK / transient). Back off and retry before
+  // giving up — clears the occasional throttle so a no-account lookup (which
+  // must check all candidates) doesn't spuriously fail.
+  if (attempt < 2) {
+    await new Promise((res) => setTimeout(res, 400 * (attempt + 1)));
+    return isDeployed(address, apiKey, attempt + 1);
+  }
+  throw new Error(
+    `Etherscan getCode error: ${message ?? String(result).slice(0, 60)}`,
+  );
+}
+
+async function forwardLookup(eoa: string, apiKey: string): Promise<Result> {
   if (!/^0x[0-9a-fA-F]{40}$/.test(eoa)) {
     return { status: 400, body: { error: "Invalid EOA address." }, ttlMs: 0 };
   }
@@ -245,40 +277,33 @@ async function forwardLookup(eoa: string): Promise<Result> {
   // that fails EIP-55 checksum, and the CREATE2 salt is case-insensitive anyway.
   const candidates = deriveCandidates(eoa.toLowerCase() as Address);
 
-  // Fetch every candidate's bytecode in parallel (one batched JSON-RPC call),
-  // then return the first DEPLOYED one in Polymarket's classifyWalletType
-  // priority order. allSettled so a single RPC hiccup on one candidate can't
-  // hide a real account on another.
-  const results = await Promise.allSettled(
-    candidates.map((c) => codeClient.getCode({ address: c.address })),
-  );
-
+  // Check candidates SEQUENTIALLY in Polymarket's classifyWalletType priority
+  // order, returning the first deployed one (early-exit — a returning user is
+  // found in 1-4 calls). Sequential keeps us under the shared key's burst
+  // limit; a per-candidate error is tolerated so one flaky call can't hide a
+  // real account on another type.
   let hadError = false;
-  for (let i = 0; i < candidates.length; i++) {
-    const res = results[i];
-    if (res.status === "rejected") {
+  for (const c of candidates) {
+    try {
+      if (await isDeployed(c.address, apiKey)) {
+        return {
+          status: 200,
+          body: {
+            proxy: c.address,
+            proxyType: c.type,
+            // CLOB SignatureType: POLY_PROXY=1, POLY_GNOSIS_SAFE=2, POLY_1271=3.
+            signatureType: c.signatureType,
+          },
+          ttlMs: TTL_FOUND,
+        };
+      }
+    } catch {
       hadError = true;
-      continue;
-    }
-    const code = res.value; // bytecode hex, or undefined when there's no code
-    if (code && code !== "0x") {
-      const c = candidates[i];
-      return {
-        status: 200,
-        body: {
-          proxy: c.address,
-          proxyType: c.type,
-          // CLOB SignatureType: POLY_PROXY=1, POLY_GNOSIS_SAFE=2, POLY_1271=3.
-          signatureType: c.signatureType,
-        },
-        ttlMs: TTL_FOUND,
-      };
     }
   }
-
   if (hadError) {
-    // We couldn't conclusively check every candidate — surface "couldn't check"
-    // (the client treats this as unavailable), never a false "no account".
+    // Couldn't conclusively check every candidate — surface "couldn't check"
+    // (client treats this as unavailable), never a false "no account".
     return {
       status: 502,
       body: { error: "Upstream lookup error — please retry." },
