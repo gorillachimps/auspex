@@ -216,7 +216,7 @@ function ConnectButtonInner() {
             </div>
             <div className="border-b border-border px-3 py-2">
               <div className="text-[10px] uppercase tracking-wider text-muted-2">
-                Trading account
+                Polymarket account
               </div>
               {funder ? (
                 <div
@@ -227,7 +227,7 @@ function ConnectButtonInner() {
                 </div>
               ) : (
                 <div className="text-[12px] text-amber-300">
-                  Not set up — required to start trading
+                  Not connected — needed to place bets
                 </div>
               )}
             </div>
@@ -241,7 +241,7 @@ function ConnectButtonInner() {
               className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-2"
             >
               <Settings className="h-3.5 w-3.5 text-muted-2" />
-              {funder ? "Change trading account" : "Set up trading account"}
+              {funder ? "Change Polymarket account" : "Connect Polymarket account"}
             </button>
             <button
               type="button"
@@ -253,8 +253,8 @@ function ConnectButtonInner() {
               className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-2"
               title={
                 funder
-                  ? "Bridge USDC from Base / Arbitrum / Optimism / Ethereum directly into your trading account via Across"
-                  : "Set up your trading account first to bridge directly into it"
+                  ? "Bridge USDC from Base / Arbitrum / Optimism / Ethereum directly into your Polymarket account via Across"
+                  : "Connect your Polymarket account first to bridge directly into it"
               }
             >
               <ArrowDownToLine className="h-3.5 w-3.5 text-muted-2" />

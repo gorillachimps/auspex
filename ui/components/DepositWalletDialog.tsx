@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Loader2,
   Sparkles,
+  UserPlus,
   X,
 } from "lucide-react";
 import { usePublicClient } from "wagmi";
@@ -26,22 +27,26 @@ type Props = {
   onSaved: (funder: `0x${string}`) => void;
 };
 
+const POLYMARKET_URL = "https://polymarket.com";
+
 /**
- * "Last-step" dialog that links the connected wallet to the user's existing
- * Polymarket account (the smart-contract proxy that actually holds USDC).
+ * Links the connected wallet to the user's Polymarket account (the
+ * smart-contract proxy that holds USDC). Auspex can't safely create that
+ * proxy itself — calling Polymarket's factory with our own salt would deploy
+ * a wallet their backend doesn't recognise (lost-funds trap) — so this dialog
+ * makes the *legitimate* path feel as close to in-app as possible:
  *
- * UX goals after a friend's feedback that the previous version felt
- * counter-intuitive:
- *   - Show the connected wallet at the top so the user doesn't think we're
- *     asking them to connect a second wallet.
- *   - One clear primary input with inline validation feedback (green check on
- *     valid, red on "that's your wallet, not your account").
- *   - One-click "Paste from clipboard" button so a user who just copied their
- *     address from Polymarket can finish in a single click.
- *   - Distinct call to the polymarket.com settings page where the address
- *     lives, AND a separate card for users who haven't created an account yet.
- *   - Bridge prompt only after the address is valid — avoids cluttering the
- *     primary call-to-action.
+ *   1. On open we auto-detect the proxy from the EOA (on-chain log lookup).
+ *      Returning Polymarket users see "Found your account → Start trading"
+ *      with nothing to paste.
+ *   2. New users get a single primary "Create your free account" button. After
+ *      they create it on Polymarket and tab back, a background poll detects the
+ *      brand-new proxy automatically and flips the dialog to the found state —
+ *      they never copy or paste an address.
+ *   3. Manual paste is a demoted fallback for the rare edge cases.
+ *
+ * The save path keeps two safety checks (bytecode = real proxy; reverse-owner
+ * = belongs to this wallet) so a wrong address can't silently 0-balance them.
  */
 export function DepositWalletDialog({
   open,
@@ -55,21 +60,33 @@ export function DepositWalletDialog({
   const [pasting, setPasting] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  /** True after the user clicks "Create account" — drives the background
+   *  poll that detects their freshly-created proxy when they tab back. */
+  const [awaitingCreate, setAwaitingCreate] = useState(false);
+  /** Reveals the manual paste fallback in the new-user lane. */
+  const [showManual, setShowManual] = useState(false);
   const publicClient = usePublicClient({ chainId: polygon.id });
-  /** When the input was filled by our auto-detect rather than the user
-   *  pasting or typing it. Drives a friendly "we found this for you" badge. */
+  /** Filled by auto-detect (vs typed/pasted) → drives the "we found it" copy. */
   const [autoDetected, setAutoDetected] = useState(false);
-  /** Per-EOA cache of detect results so reopening the dialog doesn't refetch. */
   const detectedFor = useRef<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  useFocusTrap(open, dialogRef, 'input[type="text"]');
+  useFocusTrap(open, dialogRef, "button");
+
+  // Validity (computed before effects so both can read it).
+  const trimmed = value.trim();
+  const looksValid = /^0x[0-9a-fA-F]{40}$/.test(trimmed);
+  const sameAsWallet =
+    looksValid && trimmed.toLowerCase() === (eoa ?? "").toLowerCase();
+  const isValid = looksValid && !sameAsWallet;
 
   useEffect(() => {
     if (!open) return;
     setValue(currentFunder ?? "");
     setError(null);
     setAutoDetected(false);
+    setAwaitingCreate(false);
+    setShowManual(false);
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
@@ -77,18 +94,11 @@ export function DepositWalletDialog({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, currentFunder, onClose]);
 
-  // Auto-detect the user's Polymarket proxy from their EOA. Only runs when:
-  //   - dialog is open
-  //   - we have an EOA
-  //   - we haven't already detected for this EOA
-  //   - the user hasn't already pasted something (keep their input)
-  // Falls back silently to manual entry if no proxy is found or the API
-  // route is unconfigured.
+  // One-shot auto-detect on open (returning users).
   useEffect(() => {
-    if (!open) return;
-    if (!eoa) return;
+    if (!open || !eoa) return;
     if (detectedFor.current === eoa) return;
-    if (currentFunder) return; // already have a saved address
+    if (currentFunder) return;
     if (value.trim().length > 0) return;
 
     detectedFor.current = eoa;
@@ -111,19 +121,47 @@ export function DepositWalletDialog({
     };
   }, [open, eoa, currentFunder, value]);
 
-  // Defer portal mount until after hydration so SSR doesn't see a stub.
+  // Background poll while waiting for the user to finish creating their
+  // account on Polymarket. Polls every 5s AND immediately on window refocus
+  // (the moment they tab back). Detecting their new proxy flips us to the
+  // found state with nothing for them to copy.
+  useEffect(() => {
+    if (!open || !awaitingCreate || !eoa || isValid) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    async function poll() {
+      if (cancelled) return;
+      const res = await findPolymarketProxy(eoa!);
+      if (cancelled) return;
+      if (res.proxy) {
+        setValue(res.proxy);
+        setAutoDetected(true);
+        setAwaitingCreate(false);
+        setError(null);
+        return;
+      }
+      timer = setTimeout(poll, 5000);
+    }
+    function onFocus() {
+      poll();
+    }
+
+    poll();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [open, awaitingCreate, eoa, isValid]);
+
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
 
   if (!open || !mounted) return null;
-
-  const trimmed = value.trim();
-  const looksValid = /^0x[0-9a-fA-F]{40}$/.test(trimmed);
-  const sameAsWallet =
-    looksValid && trimmed.toLowerCase() === (eoa ?? "").toLowerCase();
-  const isValid = looksValid && !sameAsWallet;
 
   async function pasteFromClipboard() {
     setPasting(true);
@@ -164,21 +202,11 @@ export function DepositWalletDialog({
     }
 
     // Catch the two silent-breakage failure modes before they become "balance
-    // shows 0 and the user has no idea why":
-    //
-    //   1. Pasted an EOA, not a proxy. The Polymarket *account* is the smart
-    //      contract that polymarket.com deploys for the user — it has bytecode
-    //      on Polygon. An EOA doesn't. If we accept an EOA, every CLOB call
-    //      silently returns zero balance / no positions.
-    //
-    //   2. Pasted a real proxy, but it doesn't belong to the connected wallet.
-    //      The proxy's `owners` array on-chain tells us who can sign for it.
-    //      If the connected EOA isn't in there, derived credentials work but
-    //      the API returns nothing useful — same silent zero outcome.
+    // shows 0 and the user has no idea why": (1) pasted an EOA not a proxy
+    // (no bytecode); (2) a real proxy that the connected wallet doesn't own.
     setVerifying(true);
     setError(null);
     try {
-      // Step 1: bytecode check (purely client-side, always available).
       if (publicClient) {
         const code = await publicClient.getCode({
           address: trimmed as `0x${string}`,
@@ -186,14 +214,11 @@ export function DepositWalletDialog({
         const hasBytecode = !!code && code !== "0x";
         if (!hasBytecode) {
           setError(
-            "That's a regular wallet, not your Polymarket account. Your account is a smart contract that polymarket.com creates for you — copy that address from polymarket.com → profile → builder settings.",
+            "That's a regular wallet, not your Polymarket account. Your account is a smart contract Polymarket creates for you — copy that address from polymarket.com → profile → builder settings.",
           );
           return;
         }
       }
-
-      // Step 2: reverse-owner check (server-side, gated on POLYGONSCAN_API_KEY).
-      // Fails open when the API key isn't configured on this deployment.
       const ownerLookup = await findProxyOwners(trimmed);
       if (ownerLookup.available && ownerLookup.owners.length > 0) {
         const eoaLc = eoa.toLowerCase();
@@ -202,14 +227,13 @@ export function DepositWalletDialog({
         );
         if (!isOwner) {
           setError(
-            "This Polymarket account doesn't belong to your connected wallet. Either switch to the wallet you sign Polymarket trades with, or paste the account that wallet owns.",
+            "This Polymarket account doesn't belong to your connected wallet. Switch to the wallet you sign Polymarket trades with, or paste the account that wallet owns.",
           );
           return;
         }
       }
     } catch {
-      // Either check failed (flaky network / RPC). Better to let the user
-      // save than to block them on infrastructure noise.
+      // Infra noise (flaky RPC / API) — let the user proceed rather than block.
     } finally {
       setVerifying(false);
     }
@@ -218,9 +242,62 @@ export function DepositWalletDialog({
     onSaved(trimmed as `0x${string}`);
   }
 
-  // Portal to <body> to escape the TopNav <header>'s containing block —
-  // its `backdrop-filter: blur(...)` scopes `position: fixed` to the header,
-  // which would mash the dialog into the 49px sticky-nav strip.
+  const walletChip = eoa ? `${eoa.slice(0, 6)}…${eoa.slice(-4)}` : "";
+
+  // The input block is shared between the manual fallback (new-user lane) and
+  // the "use a different account" affordance (found state).
+  const addressInput = (
+    <div>
+      <div className="relative">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setError(null);
+            setAutoDetected(false);
+          }}
+          spellCheck={false}
+          autoComplete="off"
+          placeholder="0xa1b2c3… (your Polymarket account address)"
+          className={cn(
+            "w-full rounded-md border bg-background px-3 py-2.5 pr-20 font-mono text-[12px] text-foreground placeholder:text-muted-2 focus:outline-none focus:ring-2",
+            sameAsWallet
+              ? "border-rose-400/40 focus:ring-rose-400/40"
+              : "border-border-strong focus:ring-accent/40",
+          )}
+        />
+        <button
+          type="button"
+          onClick={pasteFromClipboard}
+          disabled={pasting}
+          className="absolute right-1 top-1/2 inline-flex -translate-y-1/2 items-center gap-1 rounded px-2 py-1 text-[11px] font-semibold text-accent hover:bg-accent/15 disabled:opacity-50"
+          title="Paste from clipboard"
+        >
+          <ClipboardPaste className="h-3 w-3" aria-hidden="true" />
+          {pasting ? "Pasting…" : "Paste"}
+        </button>
+      </div>
+      {sameAsWallet ? (
+        <p className="mt-1.5 text-[11px] text-rose-300">
+          That&apos;s your wallet — we need your Polymarket <em>account</em>,
+          which is a different (smart-contract) address.
+        </p>
+      ) : error ? (
+        <p className="mt-1.5 text-[11px] text-rose-300">{error}</p>
+      ) : null}
+      <a
+        href="https://polymarket.com/settings?tab=builder"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-2 inline-flex items-center gap-1 text-[11px] text-muted hover:text-foreground"
+      >
+        Where do I find this?
+        <ExternalLink className="h-3 w-3" aria-hidden="true" />
+      </a>
+    </div>
+  );
+
   return createPortal(
     <div
       role="dialog"
@@ -240,11 +317,11 @@ export function DepositWalletDialog({
               id="deposit-wallet-title"
               className="text-base font-semibold tracking-tight"
             >
-              Almost ready
+              {isValid ? "You're ready to trade" : "Connect your Polymarket account"}
             </h2>
             <p className="mt-1 text-[12px] leading-relaxed text-muted">
-              Auspex routes orders through your existing Polymarket account.
-              Link it once — no funds move into Auspex.
+              Auspex places your bets on Polymarket. You trade through your own
+              Polymarket account — it holds your funds, Auspex never does.
             </p>
           </div>
           <button
@@ -257,135 +334,117 @@ export function DepositWalletDialog({
           </button>
         </div>
 
-        {/* Connected wallet status — reassures the user the wallet is already
-            handled and that this isn't asking for a second wallet. */}
+        {/* Connected wallet ✓ */}
         {eoa ? (
           <div className="mt-3 flex items-center gap-2 rounded-md border border-emerald-400/30 bg-emerald-500/5 px-3 py-2 text-[11px]">
             <Check className="h-3 w-3 shrink-0 text-emerald-300" aria-hidden="true" />
             <span className="text-emerald-300">Wallet connected</span>
-            <span className="ml-auto font-mono text-foreground/85">
-              {eoa.slice(0, 6)}…{eoa.slice(-4)}
-            </span>
+            <span className="ml-auto font-mono text-foreground/85">{walletChip}</span>
           </div>
         ) : null}
 
-        {/* Auto-detect success banner. Only shown when we filled the field
-            via the on-chain lookup (not when the user pasted it themselves). */}
-        {autoDetected && isValid ? (
-          <div className="mt-3 flex items-center gap-2 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-[11px]">
-            <Sparkles className="h-3 w-3 shrink-0 text-accent" aria-hidden="true" />
-            <span className="text-accent">
-              Found your Polymarket account
-            </span>
-            <span className="ml-auto text-muted-2">on-chain lookup</span>
+        {detecting && !isValid ? (
+          /* ── Detecting ─────────────────────────────────────────────── */
+          <div className="mt-4 flex items-center gap-2 rounded-md border border-border bg-background/40 px-3 py-3 text-[12px] text-muted">
+            <Loader2 className="h-4 w-4 animate-spin text-accent" aria-hidden="true" />
+            Checking for your Polymarket account…
           </div>
-        ) : null}
+        ) : isValid ? (
+          /* ── Found ─────────────────────────────────────────────────── */
+          <>
+            <div className="mt-4 rounded-md border border-accent/40 bg-accent/10 px-3 py-3">
+              <div className="flex items-center gap-2 text-[12px]">
+                <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden="true" />
+                <span className="font-medium text-accent">
+                  {autoDetected
+                    ? "Found your Polymarket account"
+                    : "Polymarket account"}
+                </span>
+                <span className="ml-auto font-mono text-[11px] text-foreground/85">
+                  {trimmed.slice(0, 6)}…{trimmed.slice(-4)}
+                </span>
+              </div>
+              {autoDetected ? (
+                <p className="mt-1 text-[11px] text-muted-2">
+                  Detected on-chain from your connected wallet — nothing to copy.
+                </p>
+              ) : null}
+            </div>
 
-        {/* Step 1: paste the account address (or accept the auto-detected one) */}
-        <div className="mt-4">
-          <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-wider text-muted-2">
-            <span>Polymarket account address</span>
-            {detecting ? (
-              <span className="inline-flex items-center gap-1 font-normal normal-case text-muted">
-                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-                <span>looking it up…</span>
-              </span>
-            ) : isValid ? (
-              <span className="inline-flex items-center gap-1 font-normal normal-case text-emerald-300">
-                <Check className="h-3 w-3" aria-hidden="true" />
-                <span>looks good</span>
-              </span>
-            ) : null}
-          </div>
-          <div className="relative">
-            <input
-              type="text"
-              value={value}
-              onChange={(e) => {
-                setValue(e.target.value);
-                setError(null);
-                setAutoDetected(false);
-              }}
-              spellCheck={false}
-              autoComplete="off"
-              placeholder="0xa1b2c3…"
-              className={cn(
-                "w-full rounded-md border bg-background px-3 py-2.5 pr-20 font-mono text-[12px] text-foreground placeholder:text-muted-2 focus:outline-none focus:ring-2",
-                isValid
-                  ? "border-emerald-400/40 focus:ring-emerald-400/40"
-                  : sameAsWallet
-                    ? "border-rose-400/40 focus:ring-rose-400/40"
-                    : "border-border-strong focus:ring-accent/40",
-              )}
-            />
+            {/* Need USDC? Bridge straight into the detected account. */}
+            <div className="mt-3 flex items-start justify-between gap-3 rounded-md border border-border bg-surface-2/40 px-3 py-2">
+              <div className="text-[11px] text-muted">
+                <div className="text-foreground">Need USDC to trade?</div>
+                <div className="mt-0.5 text-muted-2">
+                  Bridge from any chain straight into your account.
+                </div>
+              </div>
+              <BridgeButton
+                toAddress={trimmed as `0x${string}`}
+                variant="secondary"
+                label="Bridge"
+              />
+            </div>
+
             <button
               type="button"
-              onClick={pasteFromClipboard}
-              disabled={pasting}
-              className="absolute right-1 top-1/2 inline-flex -translate-y-1/2 items-center gap-1 rounded px-2 py-1 text-[11px] font-semibold text-accent hover:bg-accent/15 disabled:opacity-50"
-              title="Paste from clipboard"
+              onClick={() => {
+                setValue("");
+                setAutoDetected(false);
+                setShowManual(true);
+              }}
+              className="mt-2 text-[11px] text-muted-2 hover:text-foreground"
             >
-              <ClipboardPaste className="h-3 w-3" aria-hidden="true" />
-              {pasting ? "Pasting…" : "Paste"}
+              Not this account? Use a different one
             </button>
-          </div>
-          {sameAsWallet ? (
-            <p className="mt-1.5 text-[11px] text-rose-300">
-              That&apos;s your wallet — we need your Polymarket{" "}
-              <em>account</em>, which is a different (smart-contract) address.
-            </p>
-          ) : error ? (
-            <p className="mt-1.5 text-[11px] text-rose-300">{error}</p>
-          ) : null}
-
-          <a
-            href="https://polymarket.com/settings?tab=builder"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-2 inline-flex items-center gap-1 text-[12px] text-accent hover:underline"
-          >
-            Open Polymarket → grab my address
-            <ExternalLink className="h-3 w-3" aria-hidden="true" />
-          </a>
-        </div>
-
-        {/* Bridge prompt — only when we have a valid target so the bridge widget
-            gets the right recipient pre-filled. */}
-        {isValid ? (
-          <div className="mt-4 flex items-start justify-between gap-3 rounded-md border border-border bg-surface-2/40 px-3 py-2">
-            <div className="text-[11px] text-muted">
-              <div className="text-foreground">Need USDC in your account?</div>
-              <div className="mt-0.5 text-muted-2">
-                Bridge from any chain — Jumper sends USDC straight to your
-                account on Polygon.
+          </>
+        ) : (
+          /* ── New user / not found ──────────────────────────────────── */
+          <>
+            <div className="mt-4 rounded-md border border-border bg-background/40 p-3">
+              <div className="text-[13px] font-medium text-foreground">
+                Don&apos;t have a Polymarket account yet?
               </div>
-            </div>
-            <BridgeButton
-              toAddress={trimmed as `0x${string}`}
-              variant="secondary"
-              label="Bridge"
-            />
-          </div>
-        ) : null}
+              <div className="mt-0.5 text-[12px] text-muted-2">
+                It&apos;s free and takes about a minute. Create it, then come
+                straight back — we&apos;ll detect it automatically.
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAwaitingCreate(true);
+                  window.open(POLYMARKET_URL, "_blank", "noopener,noreferrer");
+                }}
+                className="mt-2.5 inline-flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/15 px-3 py-2 text-[13px] font-semibold text-accent hover:bg-accent/25"
+              >
+                <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                Create my free account
+                <ExternalLink className="h-3 w-3" aria-hidden="true" />
+              </button>
 
-        {/* New-user lane — visually distinct, no input. */}
-        <div className="mt-4 rounded-md border border-border bg-background/40 px-3 py-2.5 text-[12px]">
-          <div className="font-medium text-foreground">
-            No Polymarket account yet?
-          </div>
-          <div className="mt-0.5 text-muted-2">
-            Free to create. ~60 seconds. Come back and finish here.
-          </div>
-          <a
-            href="https://polymarket.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-2 inline-flex items-center gap-1 text-accent hover:underline"
-          >
-            Create on Polymarket
-            <ExternalLink className="h-3 w-3" aria-hidden="true" />
-          </a>
-        </div>
+              {awaitingCreate ? (
+                <div className="mt-2.5 flex items-center gap-2 text-[11px] text-accent">
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                  Waiting for your new account — finish on Polymarket and tab
+                  back here.
+                </div>
+              ) : null}
+            </div>
+
+            {/* Manual fallback — demoted disclosure. */}
+            {showManual ? (
+              <div className="mt-3">{addressInput}</div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowManual(true)}
+                className="mt-3 text-[12px] text-muted hover:text-foreground"
+              >
+                Already have an account? Paste its address →
+              </button>
+            )}
+          </>
+        )}
 
         <div className="mt-5 flex items-center justify-end gap-2">
           <button
@@ -405,7 +464,7 @@ export function DepositWalletDialog({
             {verifying ? (
               <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
             ) : null}
-            {verifying ? "Verifying…" : "Save & start trading"}
+            {verifying ? "Verifying…" : "Start trading"}
           </button>
         </div>
       </div>
