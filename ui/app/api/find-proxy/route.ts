@@ -1,48 +1,63 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  getCreate2Address,
+  keccak256,
+  encodeAbiParameters,
+  encodePacked,
+  type Address,
+  type Hex,
+} from "viem";
 
 /**
- * Server-side lookup: given an EOA, find the Polymarket V2 DepositWallet
- * proxy (if any) that the EOA owns.
+ * find-proxy: resolve the Polymarket account (proxy) for a wallet.
  *
- * How it works
- * ------------
- * Every Polymarket DepositWallet proxy (implementation
- * 0x58ca52ebe0dadfdf531cde7062e76746de4db1eb) emits the standard OZ
- * `OwnershipTransferred(address indexed previousOwner, address indexed
- * newOwner)` event when it's initialised. The previousOwner on initialise
- * is the zero address; the newOwner is the user's EOA.
+ * Forward (?eoa=…)
+ * ---------------
+ * A Polymarket account address is a *deterministic* CREATE2 function of the
+ * signer EOA. The old version scanned for an `OwnershipTransferred(0x0, EOA)`
+ * event, which silently missed Gnosis-Safe accounts (the type a MetaMask
+ * signup produces) because Safes never emit that event — and could also match
+ * unrelated contracts. Instead we now derive the candidate address(es) and
+ * confirm each is actually deployed on-chain via eth_getCode. This mirrors what
+ * Polymarket's own SDKs do; constants are verified against Polymarket's
+ * official test vectors and a live MetaMask account.
  *
- * We query Polygonscan's eth_getLogs equivalent for any event matching:
- *   topic0 = keccak256("OwnershipTransferred(address,address)")
- *   topic1 = 0x000…0 (previousOwner)
- *   topic2 = padded EOA (newOwner)
+ *   MetaMask / browser wallet → 1-of-1 Gnosis Safe   (CLOB sig type 2)
+ *   Magic / email login       → EIP-1167 proxy wallet (CLOB sig type 1)
  *
- * Each matching log's `address` field is the proxy contract itself. We pick
- * the most-recent one (highest block number) and return it.
+ * Reverse (?proxy=…)
+ * ------------------
+ * Still an OwnershipTransferred(0x0, owner) log scan — used only as a
+ * best-effort ownership hint on the manual-paste path.
  *
- * Why a server-side route (not a direct client fetch)
- * ---------------------------------------------------
- * Polygonscan requires an API key. Exposing it client-side as
- * NEXT_PUBLIC_POLYGONSCAN_API_KEY means anyone can scrape and abuse it.
- * This route uses a server-only POLYGONSCAN_API_KEY env var.
+ * Why server-side: the on-chain reads go through Etherscan's multichain API,
+ * which needs a key. A server-only POLYGONSCAN_API_KEY keeps it unscrapeable.
  *
- * Failure modes
- * -------------
- * - No API key configured → 503; client falls back to manual entry.
- * - Polygonscan returns no logs → 200 with `{proxy: null}`; same fallback.
- * - Polygonscan returns multiple proxies → pick the most recent (most
- *   common case: zero or one; in rare cases a user may have multiple).
+ * Failure modes: no key → 503; no deployed account derived → 200 {proxy:null};
+ * upstream error → 500. The client treats 503/429/5xx as "couldn't check",
+ * never as "no account".
  */
 
-const FACTORY = "0xD3447596d282d62bc94240d17caee437efcfde62".toLowerCase();
+// --- Deterministic derivation (forward lookup: EOA → account) --------------
+// Verified against Polymarket's official test vectors and a live MetaMask
+// account. Salt encodings DIFFER per type (Safe uses abi.encode → 32-byte
+// padded; Proxy uses encodePacked → raw 20 bytes) — do not unify them.
+const SAFE_FACTORY = "0xaacFeEa03eb1561C4e67d661e40682Bd20E3541b" as Address;
+const SAFE_INIT_CODE_HASH =
+  "0x2bce2127ff07fb632d16c8347c4ebf501f4841168bed00d9e6ef715ddb6fcecf" as Hex;
+const PROXY_FACTORY = "0xaB45c5A4B0c941a2F231C04C3f49182e1A254052" as Address;
+const PROXY_INIT_CODE_HASH =
+  "0xd21df8dc65880a8606f09fe0ce3df9b8869287ab0b058be05aa9e8af6330a00b" as Hex;
+
+// --- Reverse lookup (proxy → owners) still scans logs ----------------------
 // keccak256("OwnershipTransferred(address,address)")
 const OWNERSHIP_TRANSFERRED_TOPIC =
   "0x8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0";
 const ZERO_TOPIC =
   "0x0000000000000000000000000000000000000000000000000000000000000000";
 
-// Polymarket V2 launched in mid-2024 on Polygon; setting a generous lower
-// bound keeps the query fast.
+// Polymarket launched in mid-2024 on Polygon; a generous lower bound keeps the
+// log query fast.
 const FROM_BLOCK = "60000000";
 
 export const dynamic = "force-dynamic";
@@ -217,44 +232,74 @@ function buildEtherscanUrl(apiKey: string): URL {
   return url;
 }
 
+/** Derive the deterministic Polymarket account address(es) for a signer EOA,
+ *  in preference order (MetaMask Safe first, Magic proxy second). Pure CREATE2
+ *  — no network call. */
+function deriveCandidates(
+  eoa: Address,
+): { type: "safe" | "proxy"; signatureType: 1 | 2; address: Address }[] {
+  const safe = getCreate2Address({
+    from: SAFE_FACTORY,
+    salt: keccak256(encodeAbiParameters([{ type: "address" }], [eoa])),
+    bytecodeHash: SAFE_INIT_CODE_HASH,
+  });
+  const proxy = getCreate2Address({
+    from: PROXY_FACTORY,
+    salt: keccak256(encodePacked(["address"], [eoa])),
+    bytecodeHash: PROXY_INIT_CODE_HASH,
+  });
+  return [
+    { type: "safe", signatureType: 2, address: safe },
+    { type: "proxy", signatureType: 1, address: proxy },
+  ];
+}
+
+/** True iff `address` has non-empty bytecode on Polygon (i.e. is deployed). */
+async function isDeployed(address: string, apiKey: string): Promise<boolean> {
+  const url = new URL("https://api.etherscan.io/v2/api");
+  url.searchParams.set("chainid", "137");
+  url.searchParams.set("module", "proxy");
+  url.searchParams.set("action", "eth_getCode");
+  url.searchParams.set("address", address);
+  url.searchParams.set("tag", "latest");
+  url.searchParams.set("apikey", apiKey);
+  const r = await fetch(url.toString(), { cache: "no-store" });
+  if (!r.ok) throw new Error(`Etherscan HTTP ${r.status}`);
+  const body = (await r.json()) as { result?: unknown };
+  // "0x" = no code; any longer hex string = deployed.
+  return typeof body.result === "string" && body.result.length > 2;
+}
+
 async function forwardLookup(eoa: string, apiKey: string): Promise<Result> {
   if (!/^0x[0-9a-fA-F]{40}$/.test(eoa)) {
     return { status: 400, body: { error: "Invalid EOA address." }, ttlMs: 0 };
   }
 
-  const eoaTopic = `0x${eoa.slice(2).toLowerCase().padStart(64, "0")}`;
-  const url = buildEtherscanUrl(apiKey);
-  url.searchParams.set("topic2", eoaTopic);
-  url.searchParams.set("topic0_1_opr", "and");
-  url.searchParams.set("topic0_2_opr", "and");
-  url.searchParams.set("topic1_2_opr", "and");
-
   try {
-    const logs = await fetchLogs(url);
-    if (logs == null || logs.length === 0) {
-      return { status: 200, body: { proxy: null }, ttlMs: TTL_MISS };
+    // Derive the candidate account address(es) and return the first one that
+    // is actually deployed on-chain. Deterministic + deployment-gated, so it
+    // never returns a random contract the EOA merely interacted with, and
+    // never a not-yet-real address.
+    const candidates = deriveCandidates(eoa as Address);
+    for (const c of candidates) {
+      if (await isDeployed(c.address, apiKey)) {
+        return {
+          status: 200,
+          body: {
+            proxy: c.address,
+            proxyType: c.type,
+            // CLOB SignatureType to sign orders with for this account
+            // (POLY_PROXY = 1, POLY_GNOSIS_SAFE = 2).
+            signatureType: c.signatureType,
+          },
+          ttlMs: TTL_FOUND,
+        };
+      }
     }
-
-    // Sort by block number descending so we return the most recently-deployed
-    // proxy if the EOA has more than one. Block numbers come back as hex strings.
-    logs.sort((a, b) => parseInt(b.blockNumber, 16) - parseInt(a.blockNumber, 16));
-
-    const proxy = logs[0].address;
-    if (!proxy || !/^0x[0-9a-fA-F]{40}$/.test(proxy)) {
-      return { status: 200, body: { proxy: null }, ttlMs: TTL_MISS };
-    }
-
-    return {
-      status: 200,
-      body: {
-        proxy,
-        count: logs.length,
-        // Marker so the client knows which factory the proxy belongs to
-        // (helps if we ever support multiple deposit-wallet versions).
-        factory: FACTORY,
-      },
-      ttlMs: TTL_FOUND,
-    };
+    // No derived account is deployed for this signer — a brand-new wallet, or a
+    // proxy type we don't yet derive (e.g. Deposit Wallet / POLY_1271). Caller
+    // falls back to manual paste.
+    return { status: 200, body: { proxy: null }, ttlMs: TTL_MISS };
   } catch (e) {
     return { status: 500, body: { error: (e as Error).message }, ttlMs: 0 };
   }
