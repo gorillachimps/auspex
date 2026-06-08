@@ -63,11 +63,15 @@ export function DepositWalletDialog({
   /** True after the user clicks "Create account" — drives the background
    *  poll that detects their freshly-created proxy when they tab back. */
   const [awaitingCreate, setAwaitingCreate] = useState(false);
-  /** Reveals the manual paste fallback in the new-user lane. */
-  const [showManual, setShowManual] = useState(false);
   const publicClient = usePublicClient({ chainId: polygon.id });
   /** Filled by auto-detect (vs typed/pasted) → drives the "we found it" copy. */
   const [autoDetected, setAutoDetected] = useState(false);
+  /** Outcome of the one-shot auto-detect, so the not-found view can offer
+   *  "paste it / create one" instead of falsely asserting "you have no
+   *  account". "idle" until the lookup resolves without a proxy. */
+  const [detectOutcome, setDetectOutcome] = useState<
+    "idle" | "none" | "unavailable"
+  >("idle");
   const detectedFor = useRef<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -86,7 +90,7 @@ export function DepositWalletDialog({
     setError(null);
     setAutoDetected(false);
     setAwaitingCreate(false);
-    setShowManual(false);
+    setDetectOutcome("idle");
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
@@ -111,6 +115,12 @@ export function DepositWalletDialog({
           setValue(res.proxy);
           setAutoDetected(true);
           setError(null);
+        } else {
+          // Couldn't find one for this wallet (or couldn't check). Record which
+          // so the not-found view shows the right, non-accusatory copy.
+          setDetectOutcome(
+            res.status === "unavailable" ? "unavailable" : "none",
+          );
         }
       })
       .finally(() => {
@@ -391,7 +401,6 @@ export function DepositWalletDialog({
               onClick={() => {
                 setValue("");
                 setAutoDetected(false);
-                setShowManual(true);
               }}
               className="mt-2 text-[11px] text-muted-2 hover:text-foreground"
             >
@@ -399,15 +408,31 @@ export function DepositWalletDialog({
             </button>
           </>
         ) : (
-          /* ── New user / not found ──────────────────────────────────── */
+          /* ── Not auto-detected ─────────────────────────────────────────
+             Never assert "you have no account": auto-detect can't see every
+             Polymarket proxy type (e.g. MetaMask Safe accounts) and may have
+             simply been unable to run. Lead with the existing-account paste
+             path; offer create as a clearly secondary option. */
           <>
             <div className="mt-4 rounded-md border border-border bg-background/40 p-3">
               <div className="text-[13px] font-medium text-foreground">
-                Don&apos;t have a Polymarket account yet?
+                {detectOutcome === "unavailable"
+                  ? "Couldn’t auto-detect your account"
+                  : "Already have a Polymarket account?"}
               </div>
               <div className="mt-0.5 text-[12px] text-muted-2">
-                It&apos;s free and takes about a minute. Create it, then come
-                straight back — we&apos;ll detect it automatically.
+                {detectOutcome === "unavailable"
+                  ? "Auto-detect couldn’t run just now. Paste your Polymarket account address below — or create one if you’re new."
+                  : "Paste its address below. It’s the 0x… account address Polymarket shows under your profile — the smart contract that holds your USDC, not your wallet address."}
+              </div>
+              <div className="mt-3">{addressInput}</div>
+            </div>
+
+            {/* New to Polymarket — secondary path. */}
+            <div className="mt-3 rounded-md border border-border bg-background/40 p-3">
+              <div className="text-[12px] text-muted-2">
+                New to Polymarket? It’s free and takes about a minute — create
+                it, then tab back and we’ll detect it automatically.
               </div>
               <button
                 type="button"
@@ -430,19 +455,6 @@ export function DepositWalletDialog({
                 </div>
               ) : null}
             </div>
-
-            {/* Manual fallback — demoted disclosure. */}
-            {showManual ? (
-              <div className="mt-3">{addressInput}</div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowManual(true)}
-                className="mt-3 text-[12px] text-muted hover:text-foreground"
-              >
-                Already have an account? Paste its address →
-              </button>
-            )}
           </>
         )}
 

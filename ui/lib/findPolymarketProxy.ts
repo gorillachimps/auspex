@@ -8,23 +8,34 @@
  */
 export async function findPolymarketProxy(
   eoa: string,
-): Promise<{ proxy: `0x${string}` | null; count?: number }> {
+): Promise<{
+  proxy: `0x${string}` | null;
+  count?: number;
+  /** "found" = a proxy was returned; "none" = the lookup ran and genuinely
+   *  found nothing for this wallet; "unavailable" = we couldn't check (no API
+   *  key, rate-limited, network/upstream error). Callers must NOT treat
+   *  "unavailable" — or even "none" — as proof the user has no account, since
+   *  the on-chain scan can't see every Polymarket proxy type. */
+  status: "found" | "none" | "unavailable";
+}> {
   try {
     const r = await fetch(`/api/find-proxy?eoa=${encodeURIComponent(eoa)}`, {
       cache: "no-store",
     });
-    if (!r.ok) return { proxy: null };
+    // 503 (not configured), 429 (rate-limited), 4xx/5xx → couldn't determine.
+    if (!r.ok) return { proxy: null, status: "unavailable" };
     const data = (await r.json()) as {
       proxy: string | null;
       count?: number;
     };
-    if (!data.proxy) return { proxy: null };
+    if (!data.proxy) return { proxy: null, status: "none" };
     return {
       proxy: data.proxy as `0x${string}`,
       count: data.count,
+      status: "found",
     };
   } catch {
-    return { proxy: null };
+    return { proxy: null, status: "unavailable" };
   }
 }
 
