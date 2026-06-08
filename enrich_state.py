@@ -126,6 +126,15 @@ def enrich_binance_price(m: dict, prices: dict[str, float]) -> dict:
     threshold = m["threshold_value"]
     op = m["threshold_op"]
 
+    # A zero (or missing) threshold makes distance_to_trigger — computed below
+    # as a fraction of the threshold — undefined, and previously crashed the
+    # whole enrich pass with ZeroDivisionError (taking down both data-rebuild
+    # and the 15-min data-refresh). Treat it like the un-priceable cases above
+    # so the degenerate market is excluded from the live screener instead of
+    # killing the run.
+    if not threshold:
+        return {"state": "zero_threshold", "ambiguity": True}
+
     # Distance: positive means spot is on the "wrong side" of threshold
     # (i.e., further from triggering). Negative or zero means already triggered.
     if op == ">=":
