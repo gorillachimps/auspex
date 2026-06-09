@@ -132,6 +132,19 @@ export function OrderTicket({
       : null;
   const mid = bestBid != null && bestAsk != null ? (bestBid + bestAsk) / 2 : null;
 
+  // Grace window so we don't flash "not tradeable" during the brief initial
+  // book load. If BOTH sides are still empty after it elapses, the CLOB has no
+  // live order book for this token (the market likely just closed/resolved) —
+  // gate the order instead of letting it fail with a raw "No orderbook exists"
+  // API error after the user clicks Buy.
+  const [bookGraceElapsed, setBookGraceElapsed] = useState(false);
+  useEffect(() => {
+    setBookGraceElapsed(false);
+    if (!open || !tokenId) return;
+    const t = setTimeout(() => setBookGraceElapsed(true), 4000);
+    return () => clearTimeout(t);
+  }, [open, tokenId]);
+
   // Reset on open with sensible defaults: snap price near current mid.
   // When `initialOrderMode === "market"` and we have a `maxShares` (close-flow),
   // also pre-fill the size input so the user just has to click "Sell" once.
@@ -495,7 +508,15 @@ export function OrderTicket({
     return null;
   })();
 
-  const blocker = sessionBlocker ?? allowanceBlocker;
+  // No live order book (both sides empty after the grace window) → the market
+  // isn't tradeable on Polymarket right now. Highest-priority blocker: surface a
+  // clear message and disable Buy instead of a raw CLOB error post-click.
+  const bookUnavailable =
+    bookGraceElapsed && bestBid == null && bestAsk == null;
+  const bookBlocker = bookUnavailable
+    ? "This market isn't tradeable right now — Polymarket has no live order book for it (it may have just closed or resolved). Try another market."
+    : null;
+  const blocker = bookBlocker ?? sessionBlocker ?? allowanceBlocker;
   const submitDisabled = !canSubmit || !!blocker;
 
   return (
