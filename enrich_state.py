@@ -29,22 +29,44 @@ OUT = Path(__file__).parent / "data" / "enriched-markets.json"
 # attrs through the build pipeline.
 OUT_META = Path(__file__).parent / "data" / "snapshot-meta.json"
 
-BINANCE = "https://api.binance.com/api/v3/ticker/price"
-# CryptoCompare is the fallback when Binance is geo-blocked. GitHub Actions
-# runners are on Azure US IPs; Binance returns HTTP 451 (Unavailable For
-# Legal Reasons) to those. CryptoCompare's free tier has no such restriction
-# and returns USDT-denominated quotes for every coin we care about.
+# Binance price hosts, tried in order. data-api.binance.vision is Binance's
+# public market-data mirror: it serves the same /api/v3/ticker/price payload but
+# — unlike api.binance.com — is NOT geo-blocked (HTTP 451) from US GitHub Actions
+# runners (Azure US IPs), so we try it first.
+BINANCE_HOSTS = [
+    "https://data-api.binance.vision/api/v3/ticker/price",
+    "https://api.binance.com/api/v3/ticker/price",
+]
+# CryptoCompare was the fallback, but as of 2026-06-09 its keyless endpoint
+# returns 401 (now requires an API key). Kept as a best-effort tier in case it
+# is restored or a key is added; the pipeline no longer depends on it.
 CRYPTOCOMPARE = "https://min-api.cryptocompare.com/data/pricemulti"
 
 
 def fetch_binance_prices(symbols: list[str]) -> dict[str, float]:
-    """Single batch call; Binance returns all symbol prices when no symbol filter
-    is provided. Filter to symbols we care about."""
-    r = requests.get(BINANCE, timeout=15)
-    r.raise_for_status()
-    data = r.json()  # list of {symbol, price}
+    """Single batch call (Binance returns every symbol when unfiltered); keep the
+    ones we care about. Tries the public data mirror first, then the main host.
+    Raises only if every host is unreachable."""
     wanted = set(symbols)
-    return {row["symbol"]: float(row["price"]) for row in data if row["symbol"] in wanted}
+    last_exc: Exception | None = None
+    for host in BINANCE_HOSTS:
+        try:
+            r = requests.get(host, timeout=15)
+            r.raise_for_status()
+            data = r.json()  # list of {symbol, price}
+            out = {
+                row["symbol"]: float(row["price"])
+                for row in data
+                if row["symbol"] in wanted
+            }
+            if out:
+                return out
+        except requests.RequestException as e:
+            last_exc = e
+            continue
+    if last_exc is not None:
+        raise last_exc
+    return {}
 
 
 def fetch_cryptocompare_prices(symbols: list[str]) -> dict[str, float]:
@@ -89,29 +111,31 @@ def fetch_cryptocompare_prices(symbols: list[str]) -> dict[str, float]:
 
 
 def fetch_prices(symbols: list[str]) -> dict[str, float]:
-    """Try Binance first (Polymarket's resolution source), fall back to
-    CryptoCompare when Binance is geo-blocked (HTTP 451) or otherwise
-    unreachable. Returns the raw price dict; caller decides what to do
-    with any symbols still missing afterwards."""
-    try:
-        prices = fetch_binance_prices(symbols)
-        # Binance returns 451 with a JSON body in some regions but our code
-        # path raises on non-2xx, so getting here means we have a real
-        # response. Trust it.
-        return prices
-    except requests.HTTPError as e:
-        status = getattr(e.response, "status_code", None)
-        if status == 451:
-            print(
-                f"  Binance returned 451 (region-blocked; common on US "
-                f"GitHub Actions runners). Falling back to CryptoCompare."
-            )
-        else:
-            print(f"  Binance error {status}; falling back to CryptoCompare.")
-        return fetch_cryptocompare_prices(symbols)
-    except requests.RequestException as e:
-        print(f"  Binance network error ({e}); falling back to CryptoCompare.")
-        return fetch_cryptocompare_prices(symbols)
+    """Try each price source in order and return the first non-empty result.
+    NEVER raises: if every source is down (e.g. Binance 451 AND CryptoCompare
+    401), returns {} so the pipeline still writes a fresh snapshot — markets
+    simply carry no live spot price for that run — instead of crashing the whole
+    rebuild/refresh (and spamming failure emails)."""
+    sources = (
+        ("binance", lambda: fetch_binance_prices(symbols)),
+        ("cryptocompare", lambda: fetch_cryptocompare_prices(symbols)),
+    )
+    for name, fn in sources:
+        try:
+            prices = fn()
+            if prices:
+                return prices
+            print(f"  {name}: no prices returned; trying next source.")
+        except requests.RequestException as e:
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            print(f"  {name}: failed ({status or e}); trying next source.")
+        except Exception as e:  # noqa: BLE001 — a price source must never kill the run
+            print(f"  {name}: unexpected error ({e}); trying next source.")
+    print(
+        "  WARNING: all price sources failed — writing snapshot without live "
+        "spot prices for this run."
+    )
+    return {}
 
 
 def enrich_binance_price(m: dict, prices: dict[str, float]) -> dict:
