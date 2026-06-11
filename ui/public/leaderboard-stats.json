@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-11T09:59:52.306Z",
+  "generatedAt": "2026-06-11T15:27:14.654Z",
   "count": 86,
   "stats": {
     "0x56687bf447db6ffa42ffe2204a05edaa20f55839": {
@@ -200,17 +200,17 @@
       "realized30d": 0,
       "realizedTotal": 153926
     },
-    "0x9d84ce0306f8551e02efef1680475fc0f1dc1344": {
-      "winRate": 0.21418020679468242,
-      "closedCount": 677,
-      "realized30d": 27727,
-      "realizedTotal": 128068
-    },
     "0x033a07b3de5947eab4306676ad74eb546da30d50": {
       "winRate": 0.75,
       "closedCount": 8,
       "realized30d": 0,
       "realizedTotal": 9583
+    },
+    "0x9d84ce0306f8551e02efef1680475fc0f1dc1344": {
+      "winRate": 0.21418020679468242,
+      "closedCount": 677,
+      "realized30d": 27727,
+      "realizedTotal": 128068
     },
     "0xed2239a9150c3920000d0094d28fa51c7db03dd0": {
       "winRate": null,
@@ -248,6 +248,12 @@
       "realized30d": 0,
       "realizedTotal": 488
     },
+    "0x2c335066fe58fe9237c3d3dc7b275c2a034a0563": {
+      "winRate": 0.23076923076923078,
+      "closedCount": 13,
+      "realized30d": 0,
+      "realizedTotal": 8159
+    },
     "0xd7f85d0eb0fe0732ca38d9107ad0d4d01b1289e4": {
       "winRate": 0.3333333333333333,
       "closedCount": 24,
@@ -259,12 +265,6 @@
       "closedCount": 297,
       "realized30d": 0,
       "realizedTotal": -2353
-    },
-    "0x2c335066fe58fe9237c3d3dc7b275c2a034a0563": {
-      "winRate": 0.23076923076923078,
-      "closedCount": 13,
-      "realized30d": 0,
-      "realizedTotal": 8159
     },
     "0x5bffcf561bcae83af680ad600cb99f1184d6ffbe": {
       "winRate": 0.40685714285714286,
@@ -303,10 +303,10 @@
       "realizedTotal": -1204
     },
     "0x6480542954b70a674a74bd1a6015dec362dc8dc5": {
-      "winRate": 0.25274725274725274,
-      "closedCount": 910,
-      "realized30d": 865,
-      "realizedTotal": -18551
+      "winRate": 0.25219298245614036,
+      "closedCount": 912,
+      "realized30d": 657,
+      "realizedTotal": -18757
     },
     "0xa61ef8773ec2e821962306ca87d4b57e39ff0abd": {
       "winRate": 0.06598407281001138,
@@ -327,10 +327,10 @@
       "realizedTotal": 0
     },
     "0x24c8cf69a0e0a17eee21f69d29752bfa32e823e1": {
-      "winRate": 0.41631799163179917,
-      "closedCount": 478,
-      "realized30d": -22462,
-      "realizedTotal": 30352
+      "winRate": 0.41115702479338845,
+      "closedCount": 484,
+      "realized30d": -28087,
+      "realizedTotal": 24426
     },
     "0x9c667a1d1c1337c6dca9d93241d386e4ed346b66": {
       "winRate": 0.10151187904967603,
@@ -339,8 +339,8 @@
       "realizedTotal": -16902
     },
     "0xc8ab97a9089a9ff7e6ef0688e6e591a066946418": {
-      "winRate": 0.0657030223390276,
-      "closedCount": 1522,
+      "winRate": 0.06565988181221274,
+      "closedCount": 1523,
       "realized30d": 18153,
       "realizedTotal": 19270
     },
@@ -363,22 +363,22 @@
       "realizedTotal": -143
     },
     "0xfc25f141ed27bb1787338d2c4e7f51e3a15e1f7f": {
-      "winRate": 0.2358974358974359,
-      "closedCount": 195,
+      "winRate": 0.23834196891191708,
+      "closedCount": 193,
       "realized30d": 1046,
       "realizedTotal": 2397
     },
     "0xfbfd14dd4bb607373119de95f1d4b21c3b6c0029": {
-      "winRate": 0.2350674373795761,
-      "closedCount": 1038,
-      "realized30d": 191,
-      "realizedTotal": -5530
+      "winRate": 0.23320537428023033,
+      "closedCount": 1042,
+      "realized30d": 592,
+      "realizedTotal": -5536
     },
     "0x6d3c5bd13984b2de47c3a88ddc455309aab3d294": {
-      "winRate": 0.06759443339960239,
-      "closedCount": 1509,
-      "realized30d": -1885,
-      "realizedTotal": -1885
+      "winRate": 0.06773977196512408,
+      "closedCount": 1491,
+      "realized30d": -1870,
+      "realizedTotal": -1870
     },
     "0x4bac379da2f29d87c01ff737843e396a2cec02b1": {
       "winRate": 0.043010752688172046,
@@ -386,17 +386,17 @@
       "realized30d": 0,
       "realizedTotal": -686
     },
+    "0xa7a8c1fd4bfff08ea30214efa7efaf75d7c6580c": {
+      "winRate": 0.23809523809523808,
+      "closedCount": 21,
+      "realized30d": 123,
+      "realizedTotal": 123
+    },
     "0xb4f2f0c858566fef705edf8efc1a5e9fba307862": {
-      "winRate": 0.09156193895870736,
-      "closedCount": 557,
+      "winRate": 0.0913978494623656,
+      "closedCount": 558,
       "realized30d": 5,
       "realizedTotal": 693
-    },
-    "0xa7a8c1fd4bfff08ea30214efa7efaf75d7c6580c": {
-      "winRate": 0.16666666666666666,
-      "closedCount": 18,
-      "realized30d": 238,
-      "realizedTotal": 238
     },
     "0xa5ea13a81d2b7e8e424b182bdc1db08e756bd96a": {
       "winRate": 0.4606741573033708,
@@ -419,14 +419,14 @@
     "0xa58d4f278d7953cd38eeb929f7e242bfc7c0b9b8": {
       "winRate": 0.535175879396985,
       "closedCount": 1194,
-      "realized30d": 13994,
+      "realized30d": 13949,
       "realizedTotal": 17894
     },
     "0xed107a85a4585a381e48c7f7ca4144909e7dd2e5": {
-      "winRate": 0.34306569343065696,
-      "closedCount": 137,
-      "realized30d": -3377,
-      "realizedTotal": -30799
+      "winRate": 0.34782608695652173,
+      "closedCount": 138,
+      "realized30d": -3369,
+      "realizedTotal": -31370
     },
     "0x07e78f5f58f8fa839f298cfe3fefd258883aa343": {
       "winRate": 0.1916376306620209,
@@ -461,7 +461,7 @@
     "0x44c1dfe43260c94ed4f1d00de2e1f80fb113ebc1": {
       "winRate": 0.3672922252010724,
       "closedCount": 373,
-      "realized30d": -37517,
+      "realized30d": -37719,
       "realizedTotal": -158292
     },
     "0x4133bcbad1d9c41de776646696f41c34d0a65e70": {
@@ -489,10 +489,10 @@
       "realizedTotal": -372
     },
     "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71": {
-      "winRate": 0.2877237851662404,
-      "closedCount": 782,
-      "realized30d": 77,
-      "realizedTotal": 77
+      "winRate": 0.2846153846153846,
+      "closedCount": 780,
+      "realized30d": 75,
+      "realizedTotal": 75
     },
     "0x751a2b86cab503496efd325c8344e10159349ea1": {
       "winRate": 0.42105263157894735,
