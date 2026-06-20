@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Check,
@@ -16,7 +16,8 @@ import { erc20Abi } from "viem";
 import { polygon } from "viem/chains";
 import { writeFunderAddress } from "@/lib/polymarket";
 import { useFocusTrap } from "@/lib/useFocusTrap";
-import { findPolymarketProxy, findProxyOwners } from "@/lib/findPolymarketProxy";
+import { findPolymarketProxy } from "@/lib/findPolymarketProxy";
+import { classifyProxy } from "@/lib/polymarketDerive";
 import { cn } from "@/lib/cn";
 import { BridgeButton } from "./BridgeButton";
 
@@ -88,7 +89,23 @@ export function DepositWalletDialog({
   const looksValid = /^0x[0-9a-fA-F]{40}$/.test(trimmed);
   const sameAsWallet =
     looksValid && trimmed.toLowerCase() === (eoa ?? "").toLowerCase();
-  const isValid = looksValid && !sameAsWallet;
+  // Ownership: a funder must be PROVABLY this wallet's own account — derivable
+  // from the connected EOA via CREATE2. Auto-detected addresses are derived by
+  // construction; pasted ones we verify here. Hard guard against saving — and
+  // then bridging USDC to — a phished or wrong address.
+  const ownedType = useMemo(
+    () =>
+      eoa && looksValid && !sameAsWallet
+        ? classifyProxy(eoa, trimmed as `0x${string}`)
+        : null,
+    [eoa, looksValid, sameAsWallet, trimmed],
+  );
+  const ownershipVerified = autoDetected || ownedType != null;
+  const isValid = looksValid && !sameAsWallet && ownershipVerified;
+  // A valid-format paste that isn't derivable from this wallet is NOT the user's
+  // account — drives a reactive warning and blocks Start trading.
+  const notOwnedPaste =
+    looksValid && !sameAsWallet && !autoDetected && ownedType == null;
 
   useEffect(() => {
     if (!open) return;
@@ -262,18 +279,15 @@ export function DepositWalletDialog({
           return;
         }
       }
-      const ownerLookup = await findProxyOwners(trimmed);
-      if (ownerLookup.available && ownerLookup.owners.length > 0) {
-        const eoaLc = eoa.toLowerCase();
-        const isOwner = ownerLookup.owners.some(
-          (o) => o.toLowerCase() === eoaLc,
+      // Hard ownership guard (defense in depth; the button is already gated on
+      // ownershipVerified). The funder must be one of THIS wallet's CREATE2
+      // accounts — closes the phished/wrong-address → bridge-to-attacker leg the
+      // old reverse-owner scan silently missed for Safe accounts.
+      if (!autoDetected && classifyProxy(eoa, trimmed as `0x${string}`) == null) {
+        setError(
+          "This isn't an account your connected wallet controls. Paste the Polymarket account this wallet owns, or create a new one.",
         );
-        if (!isOwner) {
-          setError(
-            "This Polymarket account doesn't belong to your connected wallet. Switch to the wallet you sign Polymarket trades with, or paste the account that wallet owns.",
-          );
-          return;
-        }
+        return;
       }
     } catch {
       // Infra noise (flaky RPC / API) — let the user proceed rather than block.
@@ -305,7 +319,7 @@ export function DepositWalletDialog({
           placeholder="0xa1b2c3… (your Polymarket account address)"
           className={cn(
             "w-full rounded-md border bg-background px-3 py-2.5 pr-20 font-mono text-[12px] text-foreground placeholder:text-muted-2 focus:outline-none focus:ring-2",
-            sameAsWallet
+            sameAsWallet || notOwnedPaste
               ? "border-rose-400/40 focus:ring-rose-400/40"
               : "border-border-strong focus:ring-accent/40",
           )}
@@ -325,6 +339,11 @@ export function DepositWalletDialog({
         <p className="mt-1.5 text-[11px] text-rose-300">
           That&apos;s your wallet — we need your Polymarket <em>account</em>,
           which is a different (smart-contract) address.
+        </p>
+      ) : notOwnedPaste ? (
+        <p className="mt-1.5 text-[11px] text-rose-300">
+          This isn&apos;t an account your connected wallet controls. Paste the
+          Polymarket account this wallet owns, or create a new one.
         </p>
       ) : error ? (
         <p className="mt-1.5 text-[11px] text-rose-300">{error}</p>

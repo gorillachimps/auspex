@@ -268,6 +268,38 @@ async function isDeployed(
   );
 }
 
+// Polymarket collateral on Polygon (USDC.e), 6 decimals.
+const USDC_E = "0x2791bca1f2de4661ed88a30c99a7a9449aa84174";
+
+/** USDC.e balance (base units) of an address, via Etherscan. Returns 0n on any
+ *  error — it's only a tiebreak, so failing low just defers to priority order
+ *  rather than risking a wrong account. */
+async function usdcBalance(address: string, apiKey: string): Promise<bigint> {
+  const url = new URL("https://api.etherscan.io/v2/api");
+  url.searchParams.set("chainid", "137");
+  url.searchParams.set("module", "account");
+  url.searchParams.set("action", "tokenbalance");
+  url.searchParams.set("contractaddress", USDC_E);
+  url.searchParams.set("address", address);
+  url.searchParams.set("tag", "latest");
+  url.searchParams.set("apikey", apiKey);
+  try {
+    const r = await fetch(url.toString(), { cache: "no-store" });
+    if (!r.ok) return 0n;
+    const body = (await r.json()) as { status?: string; result?: unknown };
+    if (
+      body.status === "1" &&
+      typeof body.result === "string" &&
+      /^[0-9]+$/.test(body.result)
+    ) {
+      return BigInt(body.result);
+    }
+    return 0n;
+  } catch {
+    return 0n;
+  }
+}
+
 async function forwardLookup(eoa: string, apiKey: string): Promise<Result> {
   if (!/^0x[0-9a-fA-F]{40}$/.test(eoa)) {
     return { status: 400, body: { error: "Invalid EOA address." }, ttlMs: 0 };
@@ -277,42 +309,63 @@ async function forwardLookup(eoa: string, apiKey: string): Promise<Result> {
   // that fails EIP-55 checksum, and the CREATE2 salt is case-insensitive anyway.
   const candidates = deriveCandidates(eoa.toLowerCase() as Address);
 
-  // Check candidates SEQUENTIALLY in Polymarket's classifyWalletType priority
-  // order, returning the first deployed one (early-exit — a returning user is
-  // found in 1-4 calls). Sequential keeps us under the shared key's burst
-  // limit; a per-candidate error is tolerated so one flaky call can't hide a
-  // real account on another type.
+  // Find ALL deployed candidates (sequential — keeps us under the shared key's
+  // burst limit; a per-candidate error is tolerated so one flaky call can't hide
+  // a real account on another type). We deliberately do NOT early-exit: a wallet
+  // can have more than one deployed account (e.g. a legacy Safe AND a newer
+  // deposit wallet), and we must bind the one that actually holds funds — not
+  // just the first by priority order, which could be empty.
+  const deployed: typeof candidates = [];
   let hadError = false;
   for (const c of candidates) {
     try {
-      if (await isDeployed(c.address, apiKey)) {
-        return {
-          status: 200,
-          body: {
-            proxy: c.address,
-            proxyType: c.type,
-            // CLOB SignatureType: POLY_PROXY=1, POLY_GNOSIS_SAFE=2, POLY_1271=3.
-            signatureType: c.signatureType,
-          },
-          ttlMs: TTL_FOUND,
-        };
-      }
+      if (await isDeployed(c.address, apiKey)) deployed.push(c);
     } catch {
       hadError = true;
     }
   }
-  if (hadError) {
-    // Couldn't conclusively check every candidate — surface "couldn't check"
-    // (client treats this as unavailable), never a false "no account".
-    return {
-      status: 502,
-      body: { error: "Upstream lookup error — please retry." },
-      ttlMs: 0,
-    };
+
+  if (deployed.length === 0) {
+    if (hadError) {
+      // Couldn't conclusively check every candidate — "couldn't check" (client
+      // treats this as unavailable), never a false "no account".
+      return {
+        status: 502,
+        body: { error: "Upstream lookup error — please retry." },
+        ttlMs: 0,
+      };
+    }
+    // Brand-new wallet with no Polymarket account yet. Caller offers create.
+    return { status: 200, body: { proxy: null }, ttlMs: TTL_MISS };
   }
-  // Every candidate checked cleanly and none is deployed — a brand-new wallet
-  // with no Polymarket account yet. Caller offers create/paste.
-  return { status: 200, body: { proxy: null }, ttlMs: TTL_MISS };
+
+  // Default to the highest-priority deployed account (matches Polymarket's own
+  // classifyWalletType order). When more than one is deployed, prefer whichever
+  // actually holds USDC — otherwise we could bind an empty account while the
+  // user's funds sit in another, leaving them unable to trade.
+  let chosen = deployed[0];
+  if (deployed.length > 1) {
+    const balances = await Promise.all(
+      deployed.map((c) => usdcBalance(c.address, apiKey)),
+    );
+    let best = 0;
+    for (let i = 1; i < deployed.length; i++) {
+      if (balances[i] > balances[best]) best = i;
+    }
+    // Only override priority order when the funded account beats it outright.
+    if (balances[best] > balances[0]) chosen = deployed[best];
+  }
+
+  return {
+    status: 200,
+    body: {
+      proxy: chosen.address,
+      proxyType: chosen.type,
+      // CLOB SignatureType: POLY_PROXY=1, POLY_GNOSIS_SAFE=2, POLY_1271=3.
+      signatureType: chosen.signatureType,
+    },
+    ttlMs: TTL_FOUND,
+  };
 }
 
 async function reverseLookup(proxy: string, apiKey: string): Promise<Result> {
