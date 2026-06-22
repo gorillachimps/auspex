@@ -20,6 +20,7 @@ import { findPolymarketProxy } from "@/lib/findPolymarketProxy";
 import { classifyProxy } from "@/lib/polymarketDerive";
 import { cn } from "@/lib/cn";
 import { BridgeButton } from "./BridgeButton";
+import { OnrampButton } from "./OnrampButton";
 
 type Props = {
   open: boolean;
@@ -459,11 +460,14 @@ export function DepositWalletDialog({
                     gas-free.
                   </div>
                 </div>
-                <BridgeButton
-                  toAddress={trimmed as `0x${string}`}
-                  variant="primary"
-                  label="Add funds"
-                />
+                <div className="flex shrink-0 flex-col items-stretch gap-1.5">
+                  <OnrampButton toAddress={trimmed as `0x${string}`} />
+                  <BridgeButton
+                    toAddress={trimmed as `0x${string}`}
+                    variant="primary"
+                    label="Add funds"
+                  />
+                </div>
               </div>
             )}
 
