@@ -6,7 +6,8 @@
     "dev": "next dev",
     "prebuild": "node scripts/sync-data.mjs",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "vitest run"
   },
   "dependencies": {
     "@across-protocol/app-sdk": "^0.6.0",
@@ -38,6 +39,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.9"
   }
 }
