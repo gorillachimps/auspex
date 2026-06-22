@@ -50,7 +50,10 @@ export const EnrichedMarketSchema = z
     token_yes: z.string().optional(),
     token_no: z.string().optional(),
     family: FamilySchema,
-    source: z.string().optional(),
+    // Pipeline emits `source: null` for many markets; projectToRow already does
+    // `m.source ?? null`, but a bare .optional() rejected null and silently
+    // dropped ~72 markets from the screener. Accept null.
+    source: z.string().nullable().optional(),
     pair: z.string().optional(),
     symbol: z.string().optional(),
     entity: z.string().optional(),

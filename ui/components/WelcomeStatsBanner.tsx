@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fmtUSDCompact } from "@/lib/format";
-
-const BUILDER_CODE =
-  "0x1cc4300fca20eb0449c32d3c56d937d0a46e172d2707a62860b5f5311f2b608b";
+import { BUILDER_CODE } from "@/lib/builder";
 
 type Stats = {
   markets: number | null;

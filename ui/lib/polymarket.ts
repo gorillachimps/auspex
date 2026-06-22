@@ -11,6 +11,7 @@ import {
 } from "@polymarket/clob-client-v2";
 import type { WalletClient } from "viem";
 import type { ProxyType } from "./polymarketDerive";
+import { BUILDER_CODE } from "./builder";
 
 /** Map a derived Polymarket account kind to the CLOB signature type its orders
  *  must be signed with. Unknown/missing → POLY_1271 (the deposit-wallet flow),
@@ -27,10 +28,9 @@ function sigTypeFor(proxyType?: ProxyType): SignatureTypeV2 {
   }
 }
 
-/** Auspex builder code (bytes32). Registered 2026-05-06.
- *  Operator wallet (proxy): 0xb4fb45069b3f0f7c69937ca114849f5a8380da04 */
-export const BUILDER_CODE =
-  "0x1cc4300fca20eb0449c32d3c56d937d0a46e172d2707a62860b5f5311f2b608b";
+// BUILDER_CODE is imported above from ./builder (shared, dependency-light);
+// re-export it so existing importers of `@/lib/polymarket` keep working.
+export { BUILDER_CODE };
 
 export const CLOB_HOST = "https://clob.polymarket.com";
 export const POLYMARKET_CHAIN: Chain = Chain.POLYGON;

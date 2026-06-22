@@ -51,6 +51,9 @@ jobs:
             echo "No changes — exiting clean."
             exit 0
           fi
-          git add data/enriched-markets.json
+          # Include the freshness sidecar so the displayed snapshot age tracks
+          # each refresh. Staged only here (after the data-change early-exit
+          # above), so it never triggers a commit/deploy on its own.
+          git add data/enriched-markets.json data/snapshot-meta.json
           git commit -m "data: refresh enriched snapshot ($(date -u +%H:%MZ))"
           git push

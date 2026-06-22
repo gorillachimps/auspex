@@ -61,5 +61,8 @@ jobs:
             echo "No changes — exiting clean."
             exit 0
           fi
+          # Include the freshness sidecar (rewritten every run) only when the
+          # artefacts actually changed, so the displayed snapshot age stays live.
+          git add data/snapshot-meta.json
           git commit -m "data: full rebuild ($(date -u +%Y-%m-%d\ %H:%MZ))"
           git push

@@ -77,9 +77,30 @@ async function load(): Promise<Loaded> {
     throw new Error("enriched-markets.json: expected top-level array");
   }
   const raw: EnrichedMarket[] = [];
+  let dropped = 0;
+  const dropSample: string[] = [];
   for (const r of parsed) {
     const result = EnrichedMarketSchema.safeParse(r);
-    if (result.success) raw.push(result.data);
+    if (result.success) {
+      raw.push(result.data);
+      continue;
+    }
+    dropped++;
+    if (dropSample.length < 3) {
+      const rec = r as { slug?: string };
+      dropSample.push(
+        `${rec.slug ?? "?"}: ${result.error.issues
+          .map((i) => i.path.join("."))
+          .join(",")}`,
+      );
+    }
+  }
+  if (dropped > 0) {
+    // Don't silently lose markets to schema drift — surface it. (This is how
+    // ~72 markets vanished on a `source: null` the schema used to reject.)
+    console.warn(
+      `[data] dropped ${dropped}/${parsed.length} markets failing schema — sample: ${dropSample.join(" | ")}`,
+    );
   }
   const rows = raw.map(projectToRow);
   cached = { rows, raw, snapshotAt };
