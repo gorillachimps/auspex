@@ -38,3 +38,6 @@ ui/.env.*.local
 
 # Local-only scratch for the logo crop tool
 scripts/_probe/
+
+# Alert-bot local state (repost cooldown tracking)
+.alerts-state.json

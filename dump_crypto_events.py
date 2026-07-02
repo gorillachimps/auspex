@@ -1,9 +1,16 @@
 """
 Phase 0a — Polymarket crypto-vertical market dump.
 
-Paginates /events?tag_slug=crypto&active=true&closed=false, collects all
-events (with their nested markets[] arrays), dedupes by event ID,
-writes to data/crypto-events.json.
+Collects all active crypto events (with their nested markets[] arrays),
+dedupes by event ID, writes to data/crypto-events.json.
+
+Pagination: gamma capped /events offsets at ~2000 (422: "offset too large,
+use /events/keyset for deeper pagination") in mid-2026, which crashed the
+old single-sweep offset crawl and froze the snapshot's market set. The
+keyset endpoint's cursor parameter is undocumented, so instead we shard the
+crawl by end-date windows — each window stays comfortably under the offset
+cap — and dynamically split any window that ever approaches it. Events are
+deduped by ID across windows, so boundary overlap is harmless.
 
 Run:
     python dump_crypto_events.py
@@ -11,6 +18,7 @@ Run:
 
 import json
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -18,53 +26,100 @@ import requests
 GAMMA = "https://gamma-api.polymarket.com"
 TAG_SLUG = "crypto"
 # Gamma silently caps /events at 100 per page regardless of the `limit`
-# query param. Earlier versions of this script set PAGE_SIZE=500 and used
-# `len(page) < PAGE_SIZE` as the stop condition — which broke after a
-# single page because gamma returned 100 < 500. Only ~100 events made it
-# into the snapshot, hiding short-dated weeklies/dailies like
-# bitcoin-above-on-may-21. Now: page size 100 (the real cap), and we
-# loop until gamma returns an empty page.
+# query param — loop until an empty page.
 PAGE_SIZE = 100
-# Safety cap so a runaway pagination doesn't iterate forever on a gamma
-# bug. Crypto vertical sits around 3-4k active events in practice — this
-# gives us a healthy margin without ever pulling the firehose.
-MAX_OFFSET = 10_000
+# Gamma 422s offsets beyond ~2000. Stay under it per window; a window that
+# reaches this is split in half and re-crawled rather than truncated.
+OFFSET_CAP = 2_000
+# Window boundaries in days-from-now. Dailies cluster in the near term, so
+# near windows are narrow; far windows are sparse and can be wide. The final
+# None = open-ended tail (end_date_min only).
+WINDOW_DAYS = [0, 1, 2, 4, 7, 14, 30, 60, 120, 240, 500, 1000, None]
 OUT_PATH = Path(__file__).parent / "data" / "crypto-events.json"
 
 
-def fetch_page(offset: int, limit: int = PAGE_SIZE) -> list:
-    r = requests.get(
-        f"{GAMMA}/events",
-        params={
-            "tag_slug": TAG_SLUG,
-            "active": "true",
-            "closed": "false",
-            "limit": limit,
-            "offset": offset,
-        },
-        timeout=30,
-    )
+def fetch_page(offset: int, end_min: str | None, end_max: str | None) -> list:
+    params: dict = {
+        "tag_slug": TAG_SLUG,
+        "active": "true",
+        "closed": "false",
+        "limit": PAGE_SIZE,
+        "offset": offset,
+    }
+    if end_min:
+        params["end_date_min"] = end_min
+    if end_max:
+        params["end_date_max"] = end_max
+    r = requests.get(f"{GAMMA}/events", params=params, timeout=30)
     r.raise_for_status()
     return r.json()
 
 
-def main() -> None:
-    by_id: dict = {}
+def crawl_window(end_min: str | None, end_max: str | None, by_id: dict) -> bool:
+    """Crawl one end-date window into by_id. Returns False if the window hit
+    the offset cap before exhausting (caller should split it)."""
     offset = 0
     while True:
-        page = fetch_page(offset)
-        new = sum(1 for e in page if e.get("id") not in by_id)
+        page = fetch_page(offset, end_min, end_max)
         for e in page:
             by_id[e.get("id")] = e
-        print(f"  offset {offset:>5}: page={len(page):>3}  new={new:>3}  total={len(by_id):>4}")
-        # Empty page → we've exhausted gamma's list.
-        if len(page) == 0:
-            break
+        if len(page) < PAGE_SIZE:
+            print(
+                f"  window [{end_min or '-inf'} .. {end_max or 'inf'}]"
+                f": {offset + len(page):>4} events (total {len(by_id):>5})"
+            )
+            return True
         offset += PAGE_SIZE
-        if offset >= MAX_OFFSET:
-            print(f"  hit MAX_OFFSET ({MAX_OFFSET:,}); stopping")
-            break
+        if offset >= OFFSET_CAP:
+            print(
+                f"  window [{end_min or '-inf'} .. {end_max or 'inf'}]"
+                f" hit the offset cap — splitting"
+            )
+            return False
         time.sleep(0.2)
+
+
+def iso(d: datetime) -> str:
+    return d.strftime("%Y-%m-%d")
+
+
+def main() -> None:
+    by_id: dict = {}
+    now = datetime.now(timezone.utc)
+    # Start one day back so events ending later today are safely included
+    # regardless of gamma's boundary semantics; dedupe absorbs any overlap.
+    bounds: list[datetime | None] = [
+        now + timedelta(days=d) if d is not None else None
+        for d in ([-1] + WINDOW_DAYS[1:])
+    ]
+    # Consecutive pairs; the last boundary is None, so the final pair is the
+    # open-ended tail (end_date_min only).
+    queue: list[tuple[datetime | None, datetime | None]] = [
+        (bounds[i], bounds[i + 1]) for i in range(len(bounds) - 1)
+    ]
+
+    while queue:
+        lo, hi = queue.pop(0)
+        ok = crawl_window(iso(lo) if lo else None, iso(hi) if hi else None, by_id)
+        if ok:
+            continue
+        # Split the window and re-crawl both halves. Never split below one
+        # day — if a single day somehow exceeds the cap, log loudly and
+        # accept the partial rather than loop forever.
+        if lo is not None and hi is not None and (hi - lo) > timedelta(days=1):
+            mid = lo + (hi - lo) / 2
+            queue.insert(0, (mid, hi))
+            queue.insert(0, (lo, mid))
+        elif lo is not None and hi is None:
+            # Open tail overflowed: peel off a bounded year, keep the rest.
+            mid = lo + timedelta(days=365)
+            queue.insert(0, (mid, None))
+            queue.insert(0, (lo, mid))
+        else:
+            print(
+                f"  WARNING: window [{lo} .. {hi}] exceeds the offset cap at "
+                f"minimum width — snapshot may be missing events in it"
+            )
 
     events = list(by_id.values())
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
