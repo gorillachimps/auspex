@@ -35,11 +35,6 @@ import { SortableTh, Td, Th } from "./ui/DataTable";
 import type { SortDir } from "./ui/DataTable";
 import { MobilePositionList } from "./MobilePositionList";
 
-// Polymarket's default tick size when the snapshot didn't capture one.
-// Almost all binary markets are 0.01; the few thin-price markets use 0.001
-// and would be present in the lookup if so.
-const DEFAULT_TICK = 0.01;
-
 type SortKey =
   | "market"
   | "side"
@@ -230,16 +225,22 @@ export function PortfolioView() {
     }
     if (closing.has(p.asset)) return false;
     setClosing((s) => new Set(s).add(p.asset));
+    // Only trust the snapshot's tick size when this market is actually in our
+    // snapshot (crypto vertical). For anything else — sports, politics bought
+    // on polymarket.com — pass no tickSize and let the SDK fetch the market's
+    // real one. Guessing 0.01 on a 0.001-tick market makes the SDK reject
+    // legitimate 0.999 closes ("invalid price (0.999), max: 0.99").
     const lookup = tokenLookup[p.asset];
-    const tickNum = lookup?.tickSize ?? DEFAULT_TICK;
-    const tickSize = tickToString(tickNum);
+    const tickNum = lookup?.tickSize ?? null;
+    const tickSize = tickNum != null ? tickToString(tickNum) : undefined;
     const negRisk = lookup?.negRisk ?? !!p.negativeRisk;
-    // Near-certain positions (mark ≥ 1 - tick, e.g. $0.999) trip the CLOB's
-    // price band if we let the SDK derive the marketable price from the book.
-    // Clamp the worst-price to the band edge instead: the FAK still fills at
-    // the best live bids (~0.998), it just won't accept below 0.99.
+    // Known-tick markets only: positions marked at/above the band edge would
+    // make the SDK's book-derived price fail validation — pass an explicit
+    // worst-price at the edge instead (FAK still fills at the best bids).
     const clampPrice =
-      p.curPrice >= 1 - tickNum ? Number((1 - tickNum).toFixed(4)) : undefined;
+      tickNum != null && p.curPrice >= 1 - tickNum
+        ? Number((1 - tickNum).toFixed(4))
+        : undefined;
     const toastId = toast.loading(
       `Closing ${p.size.toFixed(2)} ${p.outcome.toUpperCase()} of ${p.title.slice(0, 60)}…`,
     );

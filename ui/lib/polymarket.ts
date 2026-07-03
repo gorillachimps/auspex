@@ -298,12 +298,15 @@ export type PlaceMarketOrderInput = {
   /** BUY: USD amount to spend. SELL: shares to sell. */
   amount: number;
   side: Side;
-  tickSize: TickSize;
+  /** Omit when the market isn't in our snapshot: the SDK then fetches the
+   *  market's real tick size. Passing a guessed tick is dangerous — the SDK
+   *  validates prices against it, so a 0.01 guess on a 0.001-tick market
+   *  rejects perfectly valid 0.999 closes ("invalid price"). */
+  tickSize?: TickSize;
   negRisk: boolean;
   /** Worst acceptable price. When omitted the SDK derives the marketable
-   *  price from the live book — which for near-certain positions can land
-   *  outside the CLOB's valid [tick, 1-tick] band and get rejected. Pass an
-   *  explicit in-band price (e.g. 0.99) to close those. */
+   *  price from the live book. Pass an explicit in-band price to skip the
+   *  book walk (e.g. clamped closes at the band edge). */
   price?: number;
 };
 
