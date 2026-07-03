@@ -300,6 +300,11 @@ export type PlaceMarketOrderInput = {
   side: Side;
   tickSize: TickSize;
   negRisk: boolean;
+  /** Worst acceptable price. When omitted the SDK derives the marketable
+   *  price from the live book — which for near-certain positions can land
+   *  outside the CLOB's valid [tick, 1-tick] band and get rejected. Pass an
+   *  explicit in-band price (e.g. 0.99) to close those. */
+  price?: number;
 };
 
 /** Submit a Fill-and-Kill market order: take whatever the book offers up to
@@ -311,6 +316,7 @@ export async function placeMarketOrder({
   side,
   tickSize,
   negRisk,
+  price,
 }: PlaceMarketOrderInput) {
   return client.createAndPostMarketOrder(
     {
@@ -318,6 +324,7 @@ export async function placeMarketOrder({
       amount,
       side,
       builderCode: BUILDER_CODE,
+      ...(price != null ? { price } : {}),
     },
     { tickSize, negRisk },
     OrderType.FAK,

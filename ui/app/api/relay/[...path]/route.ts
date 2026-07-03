@@ -39,6 +39,15 @@ async function forward(
 
   const { path } = await ctx.params;
   const endpoint = path?.length === 1 ? path[0] : null;
+
+  // Local (non-forwarded) endpoint: which EOA this deploy's relayer key is
+  // scoped to. The relayer only accepts submissions FROM the key's own signer
+  // ("from X does not match auth Y" otherwise), so the UI uses this to show
+  // in-app redemption only to that wallet. The address is public information.
+  if (endpoint === "auth-address" && req.method === "GET") {
+    return NextResponse.json({ address });
+  }
+
   if (!endpoint || ALLOWED[endpoint] !== req.method) {
     return NextResponse.json({ error: "unsupported endpoint" }, { status: 404 });
   }

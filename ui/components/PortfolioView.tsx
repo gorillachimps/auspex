@@ -91,6 +91,31 @@ export function PortfolioView() {
   // Asset ids currently being redeemed through the relayer ("*" = batch-all),
   // so buttons can spin and double-submits are blocked.
   const [redeeming, setRedeeming] = useState<Set<string>>(() => new Set());
+  // Which EOA the deploy's relayer key is scoped to (the relayer rejects
+  // submissions from any other signer). undefined = not checked yet;
+  // null = relayer dark/unreachable. Only the matching wallet gets the
+  // in-app gasless button — everyone else links out to Polymarket.
+  const [relayerAuthAddr, setRelayerAuthAddr] = useState<
+    string | null | undefined
+  >(undefined);
+  useEffect(() => {
+    if (relayerAuthAddr !== undefined) return;
+    let cancelled = false;
+    fetch("/api/relay/auth-address")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { address?: string } | null) => {
+        if (!cancelled)
+          setRelayerAuthAddr(d?.address ? d.address.toLowerCase() : null);
+      })
+      .catch(() => {
+        if (!cancelled) setRelayerAuthAddr(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [relayerAuthAddr]);
+  const canInAppRedeem =
+    !!relayerAuthAddr && !!eoa && eoa.toLowerCase() === relayerAuthAddr;
   const [query, setQuery] = useState("");
   // Tick once a second so the "Updated Xs ago" label stays fresh between
   // auto-refresh ticks. Cheap — one re-render per second, no network.
@@ -206,8 +231,15 @@ export function PortfolioView() {
     if (closing.has(p.asset)) return false;
     setClosing((s) => new Set(s).add(p.asset));
     const lookup = tokenLookup[p.asset];
-    const tickSize = tickToString(lookup?.tickSize ?? DEFAULT_TICK);
+    const tickNum = lookup?.tickSize ?? DEFAULT_TICK;
+    const tickSize = tickToString(tickNum);
     const negRisk = lookup?.negRisk ?? !!p.negativeRisk;
+    // Near-certain positions (mark ≥ 1 - tick, e.g. $0.999) trip the CLOB's
+    // price band if we let the SDK derive the marketable price from the book.
+    // Clamp the worst-price to the band edge instead: the FAK still fills at
+    // the best live bids (~0.998), it just won't accept below 0.99.
+    const clampPrice =
+      p.curPrice >= 1 - tickNum ? Number((1 - tickNum).toFixed(4)) : undefined;
     const toastId = toast.loading(
       `Closing ${p.size.toFixed(2)} ${p.outcome.toUpperCase()} of ${p.title.slice(0, 60)}…`,
     );
@@ -219,6 +251,7 @@ export function PortfolioView() {
         side: Side.SELL,
         tickSize,
         negRisk,
+        price: clampPrice,
       });
       if (resp && typeof resp === "object" && (resp as { success?: boolean }).success === false) {
         throw new Error(
@@ -235,13 +268,12 @@ export function PortfolioView() {
       return true;
     } catch (e) {
       const msg = (e as Error).message ?? "unknown error";
-      // A near-certain position (mark ≈ $1.00) can't be market-sold: the CLOB
-      // rejects any price above 0.99. Explain rather than dump the raw SDK
-      // error — the honest answer is to wait for resolution, then redeem.
-      const priceBand = /invalid price|min:\s*0\.01|max:\s*0\.99/i.test(msg);
+      // Residual price-band rejections (we clamp near-certain sells above,
+      // so this mostly means an empty/one-sided book on a settling market).
+      const priceBand = /invalid price|min:\s*0\.0+1|max:\s*0\.9/i.test(msg);
       toast.error(
         priceBand
-          ? "This position is at ~$1.00 — too close to certain to sell (max price 0.99). It'll be redeemable once the market resolves."
+          ? "Couldn't price this close inside Polymarket's 0.01–0.99 band — the book looks empty. If the market just resolved, it'll show Redeem here shortly."
           : `Couldn't close: ${msg}`,
         { id: toastId, duration: 8000 },
       );
@@ -373,6 +405,13 @@ export function PortfolioView() {
           { id: toastId, duration: 6000 },
         );
         fallback();
+      } else if (/does not match auth/i.test(msg)) {
+        // Relayer key is scoped to one signer; this wallet isn't it.
+        toast.info(
+          "Gasless claiming isn't available for this wallet yet — opening Polymarket to claim (free there too, they cover gas).",
+          { id: toastId, duration: 7000 },
+        );
+        fallback();
       } else {
         toast.error(`Couldn't redeem: ${msg}`, { id: toastId, duration: 9000 });
       }
@@ -494,23 +533,36 @@ export function PortfolioView() {
             {summary.redeemable > 0 ? (
               <>
                 <span className="text-border-strong" aria-hidden="true">·</span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    redeemPositions(
-                      (state.positions ?? []).filter((p) => p.redeemable),
-                      "*",
-                    )
-                  }
-                  disabled={redeeming.size > 0}
-                  title="Claim all settled markets — signed by your wallet, gas paid by Auspex"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400/40 bg-emerald-500/15 px-2.5 py-1 text-[12px] font-semibold text-emerald-200 hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {redeeming.has("*") ? (
-                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-                  ) : null}
-                  Redeem {summary.redeemable} — gas free
-                </button>
+                {canInAppRedeem ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      redeemPositions(
+                        (state.positions ?? []).filter((p) => p.redeemable),
+                        "*",
+                      )
+                    }
+                    disabled={redeeming.size > 0}
+                    title="Claim all settled markets — signed by your wallet, gas paid by Auspex"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400/40 bg-emerald-500/15 px-2.5 py-1 text-[12px] font-semibold text-emerald-200 hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {redeeming.has("*") ? (
+                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                    ) : null}
+                    Redeem {summary.redeemable} — gas free
+                  </button>
+                ) : (
+                  <a
+                    href="https://polymarket.com/portfolio"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Open Polymarket to claim your settled markets"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400/40 bg-emerald-500/15 px-2.5 py-1 text-[12px] font-semibold text-emerald-200 hover:bg-emerald-500/25"
+                  >
+                    Redeem {summary.redeemable} on Polymarket
+                    <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                  </a>
+                )}
               </>
             ) : null}
           </>
@@ -703,10 +755,16 @@ export function PortfolioView() {
         }}
         closing={closing}
         closeDisabled={closeAllMode === "running" || session.status !== "ready"}
-        onRedeem={(asset) => {
-          const pos = (sortedPositions ?? []).find((p) => p.asset === asset);
-          if (pos) redeemPositions([pos], pos.asset);
-        }}
+        onRedeem={
+          canInAppRedeem
+            ? (asset) => {
+                const pos = (sortedPositions ?? []).find(
+                  (p) => p.asset === asset,
+                );
+                if (pos) redeemPositions([pos], pos.asset);
+              }
+            : undefined
+        }
         redeeming={redeeming}
       />
       <div className="hidden sm:block overflow-x-auto rounded-md border border-border bg-surface/20">
@@ -822,7 +880,7 @@ export function PortfolioView() {
                   </Td>
                   <Td>
                     <div className="inline-flex items-center gap-1">
-                      {p.redeemable ? (
+                      {p.redeemable && canInAppRedeem ? (
                         // Resolved market: no book to sell into — claim the
                         // winnings gaslessly through the relayer instead.
                         <button
@@ -837,6 +895,19 @@ export function PortfolioView() {
                           ) : null}
                           Redeem
                         </button>
+                      ) : p.redeemable ? (
+                        // Relayer key doesn't cover this wallet — claim on
+                        // Polymarket (still one click, just not gasless here).
+                        <a
+                          href="https://polymarket.com/portfolio"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="This market resolved — claim your winnings on Polymarket"
+                          className="inline-flex items-center gap-1 rounded-md border border-emerald-400/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-200 hover:bg-emerald-500/20"
+                        >
+                          Redeem
+                          <ExternalLink className="h-2.5 w-2.5" aria-hidden="true" />
+                        </a>
                       ) : (
                         <button
                           type="button"
