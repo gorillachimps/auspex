@@ -38,6 +38,11 @@ type Props = {
   closing?: Set<string>;
   /** Disable all close buttons (e.g. bulk close in progress). */
   closeDisabled?: boolean;
+  /** In-app gasless redeem for resolved positions. When absent, redeemable
+   *  cards fall back to linking out to Polymarket's portfolio. */
+  onRedeem?: (asset: string) => void;
+  /** Asset ids currently mid-redeem (spin + block double-submits). */
+  redeeming?: Set<string>;
 };
 
 /**
@@ -50,6 +55,8 @@ export function MobilePositionList({
   onClose,
   closing,
   closeDisabled,
+  onRedeem,
+  redeeming,
 }: Props) {
   return (
     <div className="flex flex-col gap-2 sm:hidden">
@@ -128,8 +135,21 @@ export function MobilePositionList({
               />
             </div>
           </a>
-          {p.redeemable ? (
-            // Resolved market: claim on Polymarket, no book to sell into.
+          {p.redeemable && onRedeem ? (
+            // Resolved market: claim gaslessly through the relayer.
+            <button
+              type="button"
+              onClick={() => onRedeem(p.asset)}
+              disabled={(redeeming?.size ?? 0) > 0}
+              className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-md border border-emerald-400/40 bg-emerald-500/10 px-2 py-1.5 text-[12px] font-semibold text-emerald-200 active:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {redeeming?.has(p.asset) ? (
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+              ) : null}
+              Redeem · {fmtUSD(p.currentValue)} · gas free
+            </button>
+          ) : p.redeemable ? (
+            // Read-only context: link out to Polymarket to claim.
             <a
               href="https://polymarket.com/portfolio"
               target="_blank"

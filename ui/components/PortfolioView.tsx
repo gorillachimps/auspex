@@ -11,11 +11,14 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAccount, useWalletClient } from "wagmi";
 import { useClobSession } from "@/lib/useClobSession";
 import { useMarketLookup } from "@/lib/useMarketLookup";
 import { useUserPositions, type Position } from "@/lib/useUserPositions";
 import { openDepositDialog } from "@/lib/depositDialog";
 import { placeMarketOrder, Side, tickToString } from "@/lib/polymarket";
+import { classifyProxy } from "@/lib/polymarketDerive";
+import { redeemGasless } from "@/lib/redeem";
 import { cn } from "@/lib/cn";
 import { csvFilename, downloadCsv, toCsv } from "@/lib/csv";
 import {
@@ -60,6 +63,8 @@ const fmtAgo = fmtAgoWithSuffix;
 export function PortfolioView() {
   const session = useClobSession();
   const funder = session.funderAddress;
+  const { address: eoa } = useAccount();
+  const { data: walletClient } = useWalletClient();
   // Positions come from the shared store (one poll per funder, fanned out to
   // every consumer). `state` is a thin shim so the existing `state.positions`
   // read sites don't need touching.
@@ -83,6 +88,9 @@ export function PortfolioView() {
     failed: number;
     total: number;
   } | null>(null);
+  // Asset ids currently being redeemed through the relayer ("*" = batch-all),
+  // so buttons can spin and double-submits are blocked.
+  const [redeeming, setRedeeming] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState("");
   // Tick once a second so the "Updated Xs ago" label stays fresh between
   // auto-refresh ticks. Cheap — one re-render per second, no network.
@@ -290,6 +298,89 @@ export function PortfolioView() {
     }
   }
 
+  // Claim resolved positions gaslessly through the relayer, signed by the
+  // connected wallet, executed as the funder. Falls back to Polymarket's own
+  // portfolio page when we can't run the flow (no wallet, unknown account
+  // type, relayer not configured on this deploy).
+  async function redeemPositions(targets: Position[], batchKey: string) {
+    const list = targets.filter((p) => p.redeemable);
+    if (list.length === 0) return;
+    if (redeeming.size > 0) return; // one relayed batch at a time
+    const fallback = () =>
+      window.open(
+        "https://polymarket.com/portfolio",
+        "_blank",
+        "noopener,noreferrer",
+      );
+    if (!walletClient || !eoa || !funder) {
+      toast.error("Connect your wallet to redeem.");
+      return;
+    }
+    const proxyType = classifyProxy(eoa, funder as `0x${string}`);
+    if (!proxyType) {
+      // Funder isn't derivable from this wallet (e.g. watching another
+      // account) — we can't sign for it; claim on Polymarket instead.
+      toast.info(
+        "This account can't be redeemed from the connected wallet — opening Polymarket to claim.",
+        { duration: 6000 },
+      );
+      fallback();
+      return;
+    }
+    const marks = new Set(list.map((p) => p.asset));
+    marks.add(batchKey);
+    setRedeeming(marks);
+    const total = list.reduce(
+      (s, p) => s + (isFinite(p.currentValue) ? p.currentValue : 0),
+      0,
+    );
+    const toastId = toast.loading(
+      `Claiming ${list.length} resolved position${list.length === 1 ? "" : "s"} (~${fmtUSD(total)}) — sign in your wallet…`,
+    );
+    try {
+      const res = await redeemGasless({
+        walletClient,
+        funder,
+        proxyType,
+        positions: list,
+      });
+      toast.success(
+        `Redeemed ~${fmtUSD(total)} to your Polymarket account — gas free.`,
+        {
+          id: toastId,
+          duration: 8000,
+          action: res.transactionHash
+            ? {
+                label: "View tx",
+                onClick: () =>
+                  window.open(
+                    `https://polygonscan.com/tx/${res.transactionHash}`,
+                    "_blank",
+                    "noopener,noreferrer",
+                  ),
+              }
+            : undefined,
+        },
+      );
+      // data-api lags the chain a little; refresh now and again shortly.
+      refresh();
+      setTimeout(() => refresh(), 12_000);
+    } catch (e) {
+      const msg = (e as Error).message ?? "unknown error";
+      if (/503|not configured/i.test(msg)) {
+        toast.info(
+          "Gasless redemption isn't enabled on this deploy — opening Polymarket to claim.",
+          { id: toastId, duration: 6000 },
+        );
+        fallback();
+      } else {
+        toast.error(`Couldn't redeem: ${msg}`, { id: toastId, duration: 9000 });
+      }
+    } finally {
+      setRedeeming(new Set());
+    }
+  }
+
   if (session.status === "disabled") {
     return (
       <div className="mt-8">
@@ -403,16 +494,23 @@ export function PortfolioView() {
             {summary.redeemable > 0 ? (
               <>
                 <span className="text-border-strong" aria-hidden="true">·</span>
-                <a
-                  href="https://polymarket.com/portfolio"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Open Polymarket to claim your settled markets"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400/40 bg-emerald-500/15 px-2.5 py-1 text-[12px] font-semibold text-emerald-200 hover:bg-emerald-500/25"
+                <button
+                  type="button"
+                  onClick={() =>
+                    redeemPositions(
+                      (state.positions ?? []).filter((p) => p.redeemable),
+                      "*",
+                    )
+                  }
+                  disabled={redeeming.size > 0}
+                  title="Claim all settled markets — signed by your wallet, gas paid by Auspex"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400/40 bg-emerald-500/15 px-2.5 py-1 text-[12px] font-semibold text-emerald-200 hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Redeem {summary.redeemable} on Polymarket
-                  <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                </a>
+                  {redeeming.has("*") ? (
+                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                  ) : null}
+                  Redeem {summary.redeemable} — gas free
+                </button>
               </>
             ) : null}
           </>
@@ -605,6 +703,11 @@ export function PortfolioView() {
         }}
         closing={closing}
         closeDisabled={closeAllMode === "running" || session.status !== "ready"}
+        onRedeem={(asset) => {
+          const pos = (sortedPositions ?? []).find((p) => p.asset === asset);
+          if (pos) redeemPositions([pos], pos.asset);
+        }}
+        redeeming={redeeming}
       />
       <div className="hidden sm:block overflow-x-auto rounded-md border border-border bg-surface/20">
         <table className="w-full min-w-[1080px] border-separate border-spacing-0 text-sm">
@@ -720,18 +823,20 @@ export function PortfolioView() {
                   <Td>
                     <div className="inline-flex items-center gap-1">
                       {p.redeemable ? (
-                        // Resolved market: no book to sell into. Claim winnings
-                        // on Polymarket instead of offering a doomed close.
-                        <a
-                          href="https://polymarket.com/portfolio"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="This market resolved — claim your winnings on Polymarket"
-                          className="inline-flex items-center gap-1 rounded-md border border-emerald-400/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-200 hover:bg-emerald-500/20"
+                        // Resolved market: no book to sell into — claim the
+                        // winnings gaslessly through the relayer instead.
+                        <button
+                          type="button"
+                          onClick={() => redeemPositions([p], p.asset)}
+                          disabled={redeeming.size > 0}
+                          title={`This market resolved — claim ~${fmtUSD(p.currentValue)}, gas free`}
+                          className="inline-flex items-center gap-1 rounded-md border border-emerald-400/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
                         >
+                          {redeeming.has(p.asset) ? (
+                            <Loader2 className="h-2.5 w-2.5 animate-spin" aria-hidden="true" />
+                          ) : null}
                           Redeem
-                          <ExternalLink className="h-2.5 w-2.5" aria-hidden="true" />
-                        </a>
+                        </button>
                       ) : (
                         <button
                           type="button"

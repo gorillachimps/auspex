@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@across-protocol/app-sdk": "^0.6.0",
+    "@polymarket/builder-relayer-client": "^0.0.10",
     "@polymarket/clob-client-v2": "^1.0.6",
     "@privy-io/react-auth": "^3.23.1",
     "@privy-io/wagmi": "^4.0.6",
