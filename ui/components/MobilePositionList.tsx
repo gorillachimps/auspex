@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, XCircle } from "lucide-react";
+import { ExternalLink, Loader2, XCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   fmtCloseIn,
@@ -128,7 +128,18 @@ export function MobilePositionList({
               />
             </div>
           </a>
-          {onClose ? (
+          {p.redeemable ? (
+            // Resolved market: claim on Polymarket, no book to sell into.
+            <a
+              href="https://polymarket.com/portfolio"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-md border border-emerald-400/40 bg-emerald-500/10 px-2 py-1.5 text-[12px] font-semibold text-emerald-200 active:bg-emerald-500/20"
+            >
+              <ExternalLink className="h-3 w-3" aria-hidden="true" />
+              Redeem · {fmtUSD(p.currentValue)}
+            </a>
+          ) : onClose ? (
             <button
               type="button"
               onClick={() => onClose(p.asset)}

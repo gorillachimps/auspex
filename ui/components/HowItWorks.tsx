@@ -32,12 +32,17 @@ export function HowItWorks() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="how-it-works-title"
-          className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4"
+          className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/60"
           onClick={() => setOpen(false)}
         >
+          {/* Scroll the overlay, not a height-capped inner box: a box taller
+              than the viewport would otherwise center off-screen and clip its
+              own top out of reach. min-h-full + items-center keeps short
+              content centered while letting tall content scroll from the top. */}
+          <div className="flex min-h-full items-center justify-center p-4">
           <div
             onClick={(e) => e.stopPropagation()}
-            className="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-lg border border-border-strong bg-surface p-6 shadow-2xl scrollbar-thin"
+            className="w-full max-w-xl rounded-lg border border-border-strong bg-surface p-6 shadow-2xl"
           >
             <div className="mb-4 flex items-start justify-between gap-3">
               <h2
@@ -145,6 +150,7 @@ export function HowItWorks() {
                 Got it
               </button>
             </div>
+          </div>
           </div>
         </div>
       ) : null}

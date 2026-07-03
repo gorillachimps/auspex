@@ -185,6 +185,16 @@ export function PortfolioView() {
       toast.error("Sign in to close positions.");
       return false;
     }
+    // A redeemable position is in a *resolved* market — there is no order book
+    // to sell into, so a market-sell can't work (the CLOB rejects the ~$1.00
+    // price). Redeeming is the only path; send the user to Polymarket to claim.
+    if (p.redeemable) {
+      toast.info(
+        "This market has resolved — redeem it to claim your winnings, not close it.",
+        { duration: 6000 },
+      );
+      return false;
+    }
     if (closing.has(p.asset)) return false;
     setClosing((s) => new Set(s).add(p.asset));
     const lookup = tokenLookup[p.asset];
@@ -217,7 +227,16 @@ export function PortfolioView() {
       return true;
     } catch (e) {
       const msg = (e as Error).message ?? "unknown error";
-      toast.error(`Couldn't close: ${msg}`, { id: toastId, duration: 8000 });
+      // A near-certain position (mark ≈ $1.00) can't be market-sold: the CLOB
+      // rejects any price above 0.99. Explain rather than dump the raw SDK
+      // error — the honest answer is to wait for resolution, then redeem.
+      const priceBand = /invalid price|min:\s*0\.01|max:\s*0\.99/i.test(msg);
+      toast.error(
+        priceBand
+          ? "This position is at ~$1.00 — too close to certain to sell (max price 0.99). It'll be redeemable once the market resolves."
+          : `Couldn't close: ${msg}`,
+        { id: toastId, duration: 8000 },
+      );
       return false;
     } finally {
       setClosing((s) => {
@@ -234,8 +253,20 @@ export function PortfolioView() {
   // multiple markets in one second. Reports running progress so the user
   // can see it actually working on large portfolios.
   async function closeAll() {
-    const positions = state.positions ?? [];
-    if (positions.length === 0) return;
+    const all = state.positions ?? [];
+    // Resolved (redeemable) positions can't be sold — exclude them from the
+    // sweep so they don't count as "failed". They're claimed via Redeem.
+    const positions = all.filter((p) => !p.redeemable);
+    const skipped = all.length - positions.length;
+    if (positions.length === 0) {
+      if (skipped > 0) {
+        toast.info(
+          `Nothing to close — ${skipped} resolved position${skipped === 1 ? "" : "s"} can only be redeemed on Polymarket.`,
+          { duration: 6000 },
+        );
+      }
+      return;
+    }
     setCloseAllMode("running");
     setBulkProgress({ done: 0, failed: 0, total: positions.length });
     let done = 0;
@@ -248,11 +279,12 @@ export function PortfolioView() {
     }
     setCloseAllMode(null);
     setBulkProgress(null);
+    const tail = skipped > 0 ? ` (${skipped} resolved — redeem separately)` : "";
     if (failed === 0) {
-      toast.success(`Closed all ${done} positions.`, { duration: 5000 });
+      toast.success(`Closed all ${done} positions.${tail}`, { duration: 5000 });
     } else {
       toast.warning(
-        `Closed ${done} of ${positions.length} positions — ${failed} failed.`,
+        `Closed ${done} of ${positions.length} positions — ${failed} failed.${tail}`,
         { duration: 7000 },
       );
     }
@@ -687,24 +719,39 @@ export function PortfolioView() {
                   </Td>
                   <Td>
                     <div className="inline-flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => closeOne(p)}
-                        disabled={
-                          closing.has(p.asset) ||
-                          closeAllMode === "running" ||
-                          session.status !== "ready"
-                        }
-                        title={`Market-sell all ${p.size.toFixed(2)} ${p.outcome} shares (~${fmtUSD(p.currentValue)})`}
-                        className="inline-flex items-center gap-1 rounded-md border border-rose-400/40 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-rose-200 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        {closing.has(p.asset) ? (
-                          <Loader2 className="h-2.5 w-2.5 animate-spin" aria-hidden="true" />
-                        ) : (
-                          <XCircle className="h-2.5 w-2.5" aria-hidden="true" />
-                        )}
-                        Close
-                      </button>
+                      {p.redeemable ? (
+                        // Resolved market: no book to sell into. Claim winnings
+                        // on Polymarket instead of offering a doomed close.
+                        <a
+                          href="https://polymarket.com/portfolio"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="This market resolved — claim your winnings on Polymarket"
+                          className="inline-flex items-center gap-1 rounded-md border border-emerald-400/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-200 hover:bg-emerald-500/20"
+                        >
+                          Redeem
+                          <ExternalLink className="h-2.5 w-2.5" aria-hidden="true" />
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => closeOne(p)}
+                          disabled={
+                            closing.has(p.asset) ||
+                            closeAllMode === "running" ||
+                            session.status !== "ready"
+                          }
+                          title={`Market-sell all ${p.size.toFixed(2)} ${p.outcome} shares (~${fmtUSD(p.currentValue)})`}
+                          className="inline-flex items-center gap-1 rounded-md border border-rose-400/40 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-rose-200 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {closing.has(p.asset) ? (
+                            <Loader2 className="h-2.5 w-2.5 animate-spin" aria-hidden="true" />
+                          ) : (
+                            <XCircle className="h-2.5 w-2.5" aria-hidden="true" />
+                          )}
+                          Close
+                        </button>
+                      )}
                       <a
                         href={`https://polymarket.com/event/${p.slug}`}
                         target="_blank"
