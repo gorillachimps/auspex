@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Keyboard, X } from "lucide-react";
 
 // The single source of truth for the global shortcut list. KeyboardShortcuts
@@ -67,12 +68,15 @@ export function ShortcutsHelpButton() {
         <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
 
-      {open ? (
+      {open && typeof document !== "undefined"
+        ? createPortal(
+        // Portal to <body>: the top nav's `backdrop-blur` would otherwise trap
+        // this fixed modal inside the header strip (see HowItWorks).
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby="shortcuts-title"
-          className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4"
+          className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 px-4 py-6"
           onClick={() => setOpen(false)}
         >
           <div
@@ -117,8 +121,10 @@ export function ShortcutsHelpButton() {
               to close.
             </p>
           </div>
-        </div>
-      ) : null}
+        </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }

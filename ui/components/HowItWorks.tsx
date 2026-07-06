@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { HelpCircle, X } from "lucide-react";
 
 export function HowItWorks() {
@@ -27,7 +28,12 @@ export function HowItWorks() {
         How it works
       </button>
 
-      {open ? (
+      {open && typeof document !== "undefined"
+        ? createPortal(
+        // Portal to <body>: the top nav has `backdrop-blur`, which makes it
+        // the containing block for fixed descendants — a modal rendered inside
+        // it would be trapped in the 48px header strip instead of covering the
+        // viewport. Escaping to <body> restores true full-screen positioning.
         <div
           role="dialog"
           aria-modal="true"
@@ -152,8 +158,10 @@ export function HowItWorks() {
             </div>
           </div>
           </div>
-        </div>
-      ) : null}
+        </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }

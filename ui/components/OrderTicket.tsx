@@ -464,9 +464,9 @@ export function OrderTicket({
       case "no-funder":
         return "Link your Polymarket account to trade — it takes a few seconds.";
       case "linked":
-        return "Authorising your session…";
+        return "Authorizing your session…";
       case "deriving":
-        return "Authorising — please sign the wallet prompt.";
+        return "Authorizing — please sign the wallet prompt.";
       case "error":
         return session.error ?? "Auth error";
       case "ready":

@@ -127,7 +127,7 @@ export default function ApiDocsPage() {
               {
                 name: "proxy",
                 kind: "0x-address",
-                desc: "Reverse lookup: given a candidate proxy address, return the list of EOAs that appear in its initial-owners array. Use this to verify whether a wallet is authorised to sign for a given proxy.",
+                desc: "Reverse lookup: given a candidate proxy address, return the list of EOAs that appear in its initial-owners array. Use this to verify whether a wallet is authorized to sign for a given proxy.",
               },
             ]}
             curl={`curl -s 'https://auspex.to/api/find-proxy?eoa=0xfEA773E782Bf72A3d1f7403bd243275221c24123' | python3 -m json.tool`}

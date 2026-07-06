@@ -24,7 +24,7 @@ type Props = {
  *
  * The "?" shortcut and the help modal live in `ShortcutsHelpButton` (mounted
  * in the TopNav) so the help is reachable from every page — keeping that
- * behaviour in one place avoids double-toggling when both components are
+ * behavior in one place avoids double-toggling when both components are
  * mounted.
  */
 export function KeyboardShortcuts({ onClearFilters, hasFilters }: Props) {

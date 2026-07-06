@@ -156,7 +156,7 @@ export async function GET(req: NextRequest) {
   // Reverse mode: given a candidate proxy address, return the EOAs it lists
   // as initial owners (one OwnershipTransferred(0x0, owner) event per owner
   // when the multi-owner proxy is deployed). The dialog uses this to confirm
-  // that the connected wallet is actually authorised on the pasted proxy.
+  // that the connected wallet is actually authorized on the pasted proxy.
   const proxyParam = req.nextUrl.searchParams.get("proxy");
 
   const cacheKey = eoa

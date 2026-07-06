@@ -521,7 +521,7 @@ export function PortfolioView() {
             <Stat label="Mark value" value={fmtUSD(summary.totalValue)} />
             <span className="text-border-strong" aria-hidden="true">·</span>
             <Stat
-              label="Unrealised P&L"
+              label="Unrealized P&L"
               value={fmtSignedUSD(summary.totalPnl).text}
               tone={
                 summary.totalPnl > 0

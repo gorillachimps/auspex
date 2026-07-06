@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Portfolio · Auspex",
   description:
-    "Your current Polymarket positions — YES/NO shares, mark value, unrealised P&L.",
+    "Your current Polymarket positions — YES/NO shares, mark value, unrealized P&L.",
 };
 
 export default function PortfolioPage() {

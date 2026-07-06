@@ -27,7 +27,7 @@ const ENTRIES: Entry[] = [
       "Trade-size distribution histogram on each market detail page — five notional buckets, populated live as fills print on the WS feed.",
       "Deposit-wallet dialog hardened: bytecode and reverse-owner checks on save catch the silent-zero failure modes where the pasted address is a regular wallet or a proxy owned by a different wallet. New `/api/find-proxy?proxy=…` reverse-lookup powers the second check.",
       "Wallet dropdown rebranded — labels now read \"Wallet\" / \"Trading account\" instead of \"Signer (EOA)\" / \"Deposit wallet (funder)\". Long addresses wrap in the dropdown instead of clipping the last 4 chars silently. Both dialogs portal to <body> to escape the sticky header's `backdrop-filter` containing block.",
-      "Custom-event namespace renamed from `hunch:*` to `auspex:*` across the screener, marquee, and order-ticket plumbing. Internal-only — no user-visible behaviour change.",
+      "Custom-event namespace renamed from `hunch:*` to `auspex:*` across the screener, marquee, and order-ticket plumbing. Internal-only — no user-visible behavior change.",
     ],
   },
   {
@@ -39,7 +39,7 @@ const ENTRIES: Entry[] = [
       "Framing pivot: the product now leads with its own brand and surfaces the underlying venue (Polymarket) in the footer and onboarding flow rather than the hero. The product is a crypto-bet screener that happens to be Polymarket-backed, not a Polymarket frontend.",
       "Deposit-wallet dialog reworded as one-time onboarding — fewer protocol words, an explicit link to create a Polymarket account if the user doesn't have one yet.",
       "Hero, OG image, and root metadata reframed: 'crypto bets, sorted by signal' replaces 'Polymarket implied % vs. live state' as the headline.",
-      "Custom-event namespace renamed from polycrypto:* to hunch:* across the screener, marquee, and order-ticket plumbing. Internal-only — no user-visible behaviour change.",
+      "Custom-event namespace renamed from polycrypto:* to hunch:* across the screener, marquee, and order-ticket plumbing. Internal-only — no user-visible behavior change.",
     ],
   },
   {
@@ -47,7 +47,7 @@ const ENTRIES: Entry[] = [
     date: "2026-05-13",
     tag: "beta",
     bullets: [
-      "/portfolio page — live positions for the connected wallet, with mark value, unrealised P&L, and a 'redeem' badge for settled markets.",
+      "/portfolio page — live positions for the connected wallet, with mark value, unrealized P&L, and a 'redeem' badge for settled markets.",
       "/builder dashboard now shows market names (joined from local data) and PolygonScan links on each fill.",
       "/orders page now shows market names alongside the asset hash; order IDs are click-to-copy.",
       "ClobSession lifted into a React context — Polygon chain-switch prompt and L1 derivation now fire once per page mount, not once per consumer.",

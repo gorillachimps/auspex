@@ -192,7 +192,7 @@ function ConnectButtonInner() {
             {isLinking
               ? "Linking…"
               : isDeriving
-                ? "Authorising…"
+                ? "Authorizing…"
                 : shortAddress(eoa)}
           </span>
           <ChevronDown className="h-3 w-3 text-muted-2" aria-hidden="true" />
