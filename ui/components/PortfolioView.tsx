@@ -258,12 +258,13 @@ export function PortfolioView() {
       return true;
     } catch (e) {
       const msg = (e as Error).message ?? "unknown error";
-      // Residual price-band rejections (we clamp near-certain sells above,
-      // so this mostly means an empty/one-sided book on a settling market).
+      // With the SDK resolving the market's true tick, a price-band rejection
+      // means it couldn't derive a fillable in-band price — in practice an
+      // empty or one-sided book on a market that's about to settle.
       const priceBand = /invalid price|min:\s*0\.0+1|max:\s*0\.9/i.test(msg);
       toast.error(
         priceBand
-          ? "Couldn't price this close inside Polymarket's 0.01–0.99 band — the book looks empty. If the market just resolved, it'll show Redeem here shortly."
+          ? "Couldn't price this close — the order book looks empty. If the market just resolved, it'll show Redeem here shortly."
           : `Couldn't close: ${msg}`,
         { id: toastId, duration: 8000 },
       );

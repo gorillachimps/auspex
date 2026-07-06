@@ -273,7 +273,10 @@ export type PlaceOrderInput = {
 };
 
 /** The CLOB's authoritative minimum tick for a token. Returns null on any
- *  failure — callers should then omit tickSize and let the SDK resolve it. */
+ *  failure OR on a value outside the SDK's known tick set — callers then omit
+ *  tickSize and let the SDK resolve it. The whitelist matters: tickToString
+ *  coerces unknown values to "0.01", so passing through an unexpected tick
+ *  would silently re-create the wrong-declaration bug this exists to fix. */
 export async function fetchClobTickSize(
   tokenID: string,
 ): Promise<number | null> {
@@ -285,7 +288,8 @@ export async function fetchClobTickSize(
     if (!r.ok) return null;
     const j = (await r.json()) as { minimum_tick_size?: number };
     const t = j?.minimum_tick_size;
-    return typeof t === "number" && t > 0 && t < 1 ? t : null;
+    if (typeof t !== "number") return null;
+    return TICK_SIZES.includes(t.toString() as TickStr) ? t : null;
   } catch {
     return null;
   }
