@@ -15,11 +15,13 @@ export const dynamic = "force-dynamic";
  */
 const RELAYER_HOST = "https://relayer-v2.polymarket.com";
 
+// Exactly the endpoints RelayClient's execute/wait paths call — nothing more.
+// Notably NOT /transactions (plural): the app never uses it, and proxying it
+// would hand any visitor a keyed listing of the operator's relayer history.
 const ALLOWED: Record<string, "GET" | "POST"> = {
   nonce: "GET",
   "relay-payload": "GET",
   transaction: "GET",
-  transactions: "GET",
   deployed: "GET",
   submit: "POST",
 };
