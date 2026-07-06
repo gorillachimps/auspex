@@ -16,7 +16,7 @@ import { useClobSession } from "@/lib/useClobSession";
 import { useMarketLookup } from "@/lib/useMarketLookup";
 import { useUserPositions, type Position } from "@/lib/useUserPositions";
 import { openDepositDialog } from "@/lib/depositDialog";
-import { placeMarketOrder, Side, tickToString } from "@/lib/polymarket";
+import { placeMarketOrder, Side } from "@/lib/polymarket";
 import { classifyProxy } from "@/lib/polymarketDerive";
 import { redeemGasless } from "@/lib/redeem";
 import { cn } from "@/lib/cn";
@@ -225,22 +225,13 @@ export function PortfolioView() {
     }
     if (closing.has(p.asset)) return false;
     setClosing((s) => new Set(s).add(p.asset));
-    // Only trust the snapshot's tick size when this market is actually in our
-    // snapshot (crypto vertical). For anything else — sports, politics bought
-    // on polymarket.com — pass no tickSize and let the SDK fetch the market's
-    // real one. Guessing 0.01 on a 0.001-tick market makes the SDK reject
-    // legitimate 0.999 closes ("invalid price (0.999), max: 0.99").
-    const lookup = tokenLookup[p.asset];
-    const tickNum = lookup?.tickSize ?? null;
-    const tickSize = tickNum != null ? tickToString(tickNum) : undefined;
-    const negRisk = lookup?.negRisk ?? !!p.negativeRisk;
-    // Known-tick markets only: positions marked at/above the band edge would
-    // make the SDK's book-derived price fail validation — pass an explicit
-    // worst-price at the edge instead (FAK still fills at the best bids).
-    const clampPrice =
-      tickNum != null && p.curPrice >= 1 - tickNum
-        ? Number((1 - tickNum).toFixed(4))
-        : undefined;
+    // Never declare a tick size here: our snapshot's gamma ticks are stale
+    // for some markets (a BTC daily carried 0.01 while the CLOB's real tick
+    // was 0.001), and a wrong declared tick makes the SDK reject valid book
+    // prices ("invalid price (0.999), max: 0.99"). Omitting it lets the SDK
+    // fetch the authoritative tick per token — with the true tick, the
+    // book-derived price always validates, so no band-edge clamp is needed.
+    const negRisk = tokenLookup[p.asset]?.negRisk ?? !!p.negativeRisk;
     const toastId = toast.loading(
       `Closing ${p.size.toFixed(2)} ${p.outcome.toUpperCase()} of ${p.title.slice(0, 60)}…`,
     );
@@ -250,9 +241,7 @@ export function PortfolioView() {
         tokenID: p.asset,
         amount: p.size,
         side: Side.SELL,
-        tickSize,
         negRisk,
-        price: clampPrice,
       });
       if (resp && typeof resp === "object" && (resp as { success?: boolean }).success === false) {
         throw new Error(

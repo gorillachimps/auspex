@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useClobSession } from "@/lib/useClobSession";
 import { useBalanceAllowance, fmtCollateral } from "@/lib/useBalanceAllowance";
 import {
+  fetchClobTickSize,
   placeLimitOrder,
   placeMarketOrder,
   Side,
@@ -196,8 +197,26 @@ export function OrderTicket({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const tickSize = market ? tickToString(market.tickSize) : "0.01";
-  const tickNumeric = parseFloat(tickSize);
+  // Authoritative tick from the CLOB itself. Gamma's tick_size in our
+  // snapshot is stale for some markets (e.g. a BTC daily said 0.01 while the
+  // CLOB's real tick was 0.001), and a wrong declared tick makes the SDK
+  // reject valid prices. Snapshot value is only the pre-fetch placeholder for
+  // display/validation; orders never declare it (see submit below).
+  const [clobTick, setClobTick] = useState<number | null>(null);
+  useEffect(() => {
+    setClobTick(null);
+    if (!open || !tokenId) return;
+    let cancelled = false;
+    fetchClobTickSize(tokenId).then((t) => {
+      if (!cancelled) setClobTick(t);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, tokenId]);
+
+  const tickNumeric = clobTick ?? market?.tickSize ?? 0.01;
+  const tickSize = tickToString(tickNumeric);
 
   const price = parseFloat(priceStr);
   const sizeInput = parseFloat(sizeStr);
@@ -385,6 +404,12 @@ export function OrderTicket({
       `Placing ${verb} ${outcome.toUpperCase()}${modeLabel} order…`,
     );
     try {
+      // Declare the tick only when we fetched it from the CLOB; otherwise
+      // omit it and the SDK resolves the authoritative value itself. Never
+      // declare the snapshot's gamma tick — wrong-tick declarations reject
+      // valid orders.
+      const declaredTick =
+        clobTick != null ? tickToString(clobTick) : undefined;
       const resp =
         orderMode === "limit"
           ? await placeLimitOrder({
@@ -393,7 +418,7 @@ export function OrderTicket({
               price,
               size: limitShares,
               side: side === "buy" ? Side.BUY : Side.SELL,
-              tickSize,
+              tickSize: declaredTick,
               negRisk: market.negRisk,
             })
           : await placeMarketOrder({
@@ -401,7 +426,7 @@ export function OrderTicket({
               tokenID: tokenId,
               amount: sizeInput,
               side: side === "buy" ? Side.BUY : Side.SELL,
-              tickSize,
+              tickSize: declaredTick,
               negRisk: market.negRisk,
             });
       if (resp && typeof resp === "object" && resp.success === false) {

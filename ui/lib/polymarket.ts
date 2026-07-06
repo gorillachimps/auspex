@@ -263,10 +263,33 @@ export type PlaceOrderInput = {
   price: number;
   size: number;
   side: Side;
-  tickSize: TickSize;
+  /** Omit to let the SDK fetch the market's authoritative tick. Only pass a
+   *  value obtained from the CLOB itself — gamma/snapshot ticks are stale for
+   *  some markets and a wrong declared tick makes the SDK reject valid
+   *  prices ("invalid price"). */
+  tickSize?: TickSize;
   negRisk: boolean;
   expirationSeconds?: number;
 };
+
+/** The CLOB's authoritative minimum tick for a token. Returns null on any
+ *  failure — callers should then omit tickSize and let the SDK resolve it. */
+export async function fetchClobTickSize(
+  tokenID: string,
+): Promise<number | null> {
+  try {
+    const r = await fetch(
+      `${CLOB_HOST}/tick-size?token_id=${encodeURIComponent(tokenID)}`,
+      { cache: "no-store" },
+    );
+    if (!r.ok) return null;
+    const j = (await r.json()) as { minimum_tick_size?: number };
+    const t = j?.minimum_tick_size;
+    return typeof t === "number" && t > 0 && t < 1 ? t : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function placeLimitOrder({
   client,
