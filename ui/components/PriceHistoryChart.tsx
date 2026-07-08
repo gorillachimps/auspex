@@ -252,7 +252,7 @@ export function PriceHistoryChart({ tokenId }: Props) {
               )}
             >
               {deltaPp > 0 ? "+" : ""}
-              {deltaPp.toFixed(1)} pp
+              {deltaPp.toFixed(1)}%
             </span>
           ) : null}
         </h2>

@@ -86,7 +86,7 @@ export function MarqueeBar({ rows }: Props) {
                     <Sparkline values={m.history} />
                   </span>
                   <span className={`tabular font-semibold ${color}`}>
-                    {sign >= 0 ? "▲" : "▼"} {pp.toFixed(pp >= 1 ? 0 : 1)} pp
+                    {sign >= 0 ? "▲" : "▼"} {pp.toFixed(pp >= 1 ? 0 : 1)}%
                   </span>
                   <span className="text-border-strong">·</span>
                 </button>
