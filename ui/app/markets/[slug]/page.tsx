@@ -417,7 +417,7 @@ function ChangeStat({
         {v == null ? (
           <span className="text-muted-2">—</span>
         ) : v.sign === 0 ? (
-          <span className="text-muted">0pp</span>
+          <span className="text-muted">0%</span>
         ) : (
           <span className={v.sign > 0 ? "text-emerald-300" : "text-rose-300"}>
             {v.sign > 0 ? "▲" : "▼"} {v.text}

@@ -34,7 +34,7 @@ function buildHistory(r: TableRow): number[] {
 function changeBadge(p: number | null) {
   const v = fmtSignedPP(p);
   if (!v) return <span className="text-muted-2">—</span>;
-  if (v.sign === 0) return <span className="text-muted">0pp</span>;
+  if (v.sign === 0) return <span className="text-muted">0%</span>;
   return (
     <span className={v.sign > 0 ? "text-emerald-300" : "text-rose-300"}>
       {v.sign > 0 ? "▲" : "▼"} {v.text}

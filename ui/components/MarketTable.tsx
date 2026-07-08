@@ -305,14 +305,14 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters, de
         header: () => (
           <Tooltip
             label="24h move"
-            hint="How the odds shifted in the last 24 hours, in percentage points. ▲ 5pp = went up 5%; ▼ 2pp = went down 2%. Click to sort by biggest movers."
+            hint="How the odds shifted in the last 24 hours. ▲ 5% = odds rose 5 points; ▼ 2% = fell 2. Click to sort by biggest movers."
             align="end"
           />
         ),
         cell: ({ getValue }) => {
           const v = fmtSignedPP(getValue() as number | null);
           if (!v) return <span className="text-[12px] text-muted-2">—</span>;
-          if (v.sign === 0) return <span className="tabular text-[12px] text-muted">0pp</span>;
+          if (v.sign === 0) return <span className="tabular text-[12px] text-muted">0%</span>;
           return (
             <span
               className={cn(
