@@ -130,9 +130,9 @@ export default function ApiDocsPage() {
                 desc: "Reverse lookup: given a candidate proxy address, return the list of EOAs that appear in its initial-owners array. Use this to verify whether a wallet is authorized to sign for a given proxy.",
               },
             ]}
-            curl={`curl -s 'https://auspex.to/api/find-proxy?eoa=0xfEA773E782Bf72A3d1f7403bd243275221c24123' | python3 -m json.tool`}
+            curl={`curl -s 'https://auspex.to/api/find-proxy?eoa=0x1111111111111111111111111111111111111111' | python3 -m json.tool`}
             sample={`{
-  "proxy": "0xb4fB45069b3f0F7C69937CA114849f5A8380DA04",
+  "proxy": "0x2222222222222222222222222222222222222222",
   "count": 1,
   "factory": "0xd3447596d282d62bc94240d17caee437efcfde62"
 }`}

@@ -164,7 +164,7 @@ handles returning users; send new users to polymarket.com once.
 - GitHub: gorillachimps/auspex (public)
 - Builder code: `0x1cc4300fca20eb0449c32d3c56d937d0a46e172d2707a62860b5f5311f2b608b`
 - Operator proxy: `0xb4fB45069b3f0F7C69937CA114849f5A8380DA04`
-- Operator EOA: `0xfEA773E782Bf72A3d1f7403bd243275221c24123` (auto-detect smoke test)
+- Operator EOA: private (owner of the proxy above; derivable on-chain but not published here)
 
 ### Vercel env vars (Production)
 - `NEXT_PUBLIC_PRIVY_APP_ID` — set
@@ -185,7 +185,7 @@ npm run build                     # prebuild syncs ../data → ui/data
 
 ### Quick verification
 ```bash
-curl -s 'https://auspex.to/api/find-proxy?eoa=0xfEA773E782Bf72A3d1f7403bd243275221c24123' | python3 -m json.tool
+curl -s 'https://auspex.to/api/find-proxy?eoa=0x1111111111111111111111111111111111111111' | python3 -m json.tool
 #   → { "proxy": "0xb4fb45069b...", "count": 1, "factory": "0xd3447596..." }
 curl -s 'https://auspex.to/api/health' | python3 -m json.tool
 #   → status "ok", snapshotAgeSeconds < 900
