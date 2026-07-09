@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSnapshotMeta } from "@/lib/data";
+import { getLivePrices } from "@/lib/livePrices";
 
 export const dynamic = "force-dynamic";
 
@@ -8,14 +9,21 @@ const STALE_AFTER_MS = 6 * 60 * 60 * 1000; // 6 hours
 export async function GET() {
   const startedAt = Date.now();
   try {
-    const snap = await getSnapshotMeta();
+    const [snap, live] = await Promise.all([
+      getSnapshotMeta(),
+      getLivePrices(),
+    ]);
     const ageMs = startedAt - Date.parse(snap.snapshotAt);
     const fresh = ageMs < STALE_AFTER_MS;
+    // pricesAt drives the "Live · Xs ago" pill; the market definitions can be
+    // hours old (snapshotAt) while prices stay live-to-the-minute.
+    const pricesAt = live ? new Date(live.fetchedAt).toISOString() : null;
     return NextResponse.json(
       {
         status: fresh ? "ok" : "stale",
         snapshotAt: snap.snapshotAt,
         snapshotAgeSeconds: Math.round(ageMs / 1000),
+        pricesAt,
         markets: snap.total,
         elapsedMs: Date.now() - startedAt,
       },

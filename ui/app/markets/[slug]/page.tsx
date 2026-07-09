@@ -20,6 +20,8 @@ import { DisqusComments } from "@/components/DisqusComments";
 import { TopHolders } from "@/components/TopHolders";
 import { cn } from "@/lib/cn";
 import { getMarketBySlug } from "@/lib/data";
+import { getLivePrices } from "@/lib/livePrices";
+import { applyLivePrices } from "@/lib/liveOverlay";
 import {
   fmtCompactUSD,
   fmtDaysLeft,
@@ -55,8 +57,14 @@ export default async function MarketDetailPage({ params, searchParams }: Props) 
   // ?copy=yes|no auto-opens the buy ticket (the follow-feed "copy this fill"
   // deep link). Anything else is ignored.
   const autoOpenOutcome = copy === "yes" || copy === "no" ? copy : null;
-  const row = await getMarketBySlug(slug);
-  if (!row) notFound();
+  const snapshotRow = await getMarketBySlug(slug);
+  if (!snapshotRow) notFound();
+  // Overlay live Binance prices so "current state" + distance reflect now, not
+  // the last committed snapshot. Falls back to the snapshot row if unavailable.
+  const live = await getLivePrices();
+  const row = live
+    ? applyLivePrices([snapshotRow], live.prices).rows[0]
+    : snapshotRow;
 
   const meta = familyMeta(row.family);
   const tone = FAMILY_TONE_CLASSES[meta.tone];

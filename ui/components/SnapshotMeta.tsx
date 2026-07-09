@@ -31,6 +31,10 @@ export function SnapshotMeta({ snapshotAt }: Props) {
   // the snapshot time itself ("just now"), then update on the client after mount.
   const [now, setNow] = useState<number>(() => Date.parse(snapshotAt));
   const [liveSnapshotAt, setLiveSnapshotAt] = useState(snapshotAt);
+  // When present, prices are being recomputed live (every ~minute) on top of
+  // the snapshot's market definitions — the pill then reflects PRICE freshness,
+  // not the committed-file age. Null = live overlay unavailable → show snapshot.
+  const [pricesAt, setPricesAt] = useState<string | null>(null);
   const [flash, setFlash] = useState(false);
   const lastSnapRef = useRef(snapshotAt);
 
@@ -59,9 +63,21 @@ export function SnapshotMeta({ snapshotAt }: Props) {
     async function poll() {
       try {
         const r = await fetch("/api/health", { cache: "no-store" });
-        if (!r.ok) return;
-        const data = (await r.json()) as { snapshotAt?: string };
-        if (cancelled) return;
+        // NB: /api/health returns 503 when the *snapshot* (market list) is >6h
+        // stale — but prices may still be live. Parse the body regardless of
+        // status so pricesAt keeps driving the pill even on a stale snapshot;
+        // that resilience is the entire point of the live overlay.
+        const data = (await r.json().catch(() => null)) as {
+          snapshotAt?: string;
+          pricesAt?: string | null;
+        } | null;
+        if (cancelled || !data) return;
+        // Live-price freshness drives the pill when available.
+        setPricesAt(
+          data?.pricesAt && isFinite(Date.parse(data.pricesAt))
+            ? data.pricesAt
+            : null,
+        );
         if (!data?.snapshotAt) return;
         const incoming = Date.parse(data.snapshotAt);
         if (!isFinite(incoming)) return;
@@ -73,6 +89,7 @@ export function SnapshotMeta({ snapshotAt }: Props) {
         // Network blip — keep last known good value, try again next tick.
       }
     }
+    poll(); // once on mount so the pill flips to "Live" without a 60s wait
     const id = setInterval(poll, POLL_MS);
     return () => {
       cancelled = true;
@@ -90,24 +107,37 @@ export function SnapshotMeta({ snapshotAt }: Props) {
     return () => clearTimeout(t);
   }, [liveSnapshotAt]);
 
+  const isLive = pricesAt != null;
   return (
     <span
-      title={liveSnapshotAt}
+      title={
+        isLive
+          ? `Prices ${relative(pricesAt!, now)} · market list ${relative(liveSnapshotAt, now)}`
+          : liveSnapshotAt
+      }
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] ring-1 transition-colors duration-700",
         flash
           ? "bg-accent/20 text-accent ring-accent/40"
-          : "bg-zinc-800/60 text-muted ring-border",
+          : isLive
+            ? "bg-emerald-500/10 text-emerald-300 ring-emerald-400/30"
+            : "bg-zinc-800/60 text-muted ring-border",
       )}
     >
       <span
         aria-hidden="true"
         className={cn(
           "h-1.5 w-1.5 rounded-full transition-colors duration-700",
-          flash ? "bg-accent motion-safe:animate-pulse" : "bg-sky-400",
+          flash
+            ? "bg-accent motion-safe:animate-pulse"
+            : isLive
+              ? "bg-emerald-400 motion-safe:animate-pulse"
+              : "bg-sky-400",
         )}
       />
-      Snapshot {relative(liveSnapshotAt, now)}
+      {isLive
+        ? `Live · prices ${relative(pricesAt!, now)}`
+        : `Snapshot ${relative(liveSnapshotAt, now)}`}
     </span>
   );
 }
