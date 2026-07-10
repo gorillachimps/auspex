@@ -122,9 +122,26 @@ export async function getSnapshotMeta(): Promise<{ snapshotAt: string; total: nu
   return { snapshotAt, total: rows.length };
 }
 
+/** Gamma occasionally suffixes a market slug with a volatile run of numeric ids
+ *  after the year — e.g. `…-december-31-2026-416-954-417-853-…`. That run drifts
+ *  between data rebuilds (the same market comes back with a different tail), so a
+ *  link minted by one build 404s against the next. Strip the tail down to the
+ *  year to recover the stable base. Slugs without such a tail are returned
+ *  unchanged (the year must be followed by at least one more numeric group). */
+function stableSlugBase(slug: string): string {
+  return slug.replace(/(-20\d\d)(-\d+)+$/, "$1");
+}
+
 export async function getMarketBySlug(slug: string): Promise<TableRow | null> {
   const { rows } = await load();
-  return rows.find((r) => r.slug === slug) ?? null;
+  const exact = rows.find((r) => r.slug === slug);
+  if (exact) return exact;
+  // Fall back to the stable year-anchored base so a drifted/older link still
+  // resolves. Only runs when the exact match already failed (would 404), so it
+  // can only turn a dead link live — never redirect a currently-working page.
+  const base = stableSlugBase(slug);
+  if (base === slug) return null;
+  return rows.find((r) => stableSlugBase(r.slug) === base) ?? null;
 }
 
 /** Look up full rows for a set of market ids. Used by Trigger Radar's watcher
