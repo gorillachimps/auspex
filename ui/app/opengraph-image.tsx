@@ -101,7 +101,7 @@ export default async function Image() {
           }}
         >
           Read each market against the on-chain or exchange feed it actually
-          settles on. Sortable by distance-to-trigger and Resolution Confidence —
+          settles on. Sortable by distance-to-trigger and Clarity —
           the closest-to-triggering bets float to the top.
         </div>
 

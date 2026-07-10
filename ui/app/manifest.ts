@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Auspex",
     short_name: "Auspex",
     description:
-      "Crypto bets sorted by signal — distance to trigger and Resolution Confidence at a glance.",
+      "Crypto bets sorted by signal — distance to trigger and Clarity at a glance.",
     start_url: "/",
     display: "standalone",
     background_color: "#07080b",

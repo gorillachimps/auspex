@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: "Auspex — crypto bets, sorted by signal",
   description:
-    "Crypto prediction markets scored by how close they are to triggering. Distance-to-trigger and Resolution Confidence at a glance.",
+    "Crypto prediction markets scored by how close they are to triggering. Distance-to-trigger and Clarity scores at a glance.",
   manifest: "/manifest.webmanifest",
 };
 

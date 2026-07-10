@@ -5,7 +5,7 @@ import { Footer } from "@/components/Footer";
 export const metadata: Metadata = {
   title: "Docs · Auspex",
   description:
-    "How Auspex scores Polymarket crypto markets — Resolution Confidence, distance to trigger, families, and data sources.",
+    "How Auspex scores Polymarket crypto markets — Clarity, distance to trigger, families, and data sources.",
 };
 
 export default function DocsPage() {
