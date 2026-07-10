@@ -73,7 +73,15 @@ export function BridgeButton({
       target="_blank"
       rel="noopener noreferrer"
       className={cn(base, stylesByVariant[variant], className)}
-      title="Opens Jumper.exchange in a new tab. Destination address pre-filled."
+      // Only promise a pre-filled destination when we actually pass one. Callers
+      // omit toAddress when the account isn't deployment-confirmed, and claiming
+      // a pre-fill that isn't there would mislead the user into skipping the
+      // destination field on Jumper.
+      title={
+        toAddress
+          ? "Opens Jumper.exchange in a new tab. Destination address pre-filled."
+          : "Opens Jumper.exchange in a new tab. Set your Polymarket account as the destination there."
+      }
     >
       {label ?? "Bridge USDC"}
       <ArrowUpRight className="h-3 w-3" aria-hidden="true" />

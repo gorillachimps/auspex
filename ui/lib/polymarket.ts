@@ -338,24 +338,39 @@ export type PlaceMarketOrderInput = {
 };
 
 /**
- * Classify a Fill-and-Kill order response by how much it matched, using ONLY
- * the fact we can read without knowing the field's unit: whether it's zero.
+ * Classify a Fill-and-Kill order response by whether it matched anything.
  *
- * `OrderResponse.makingAmount` is an untyped string with no documented unit
- * (decimal shares vs 6-decimal base units), so we deliberately do NOT scale it
- * to compute a fill fraction — that would be a guess against real positions.
- * But zero is zero in any unit, so a `makingAmount` that parses to exactly 0
- * reliably means nothing matched. Everything else ("something matched" or
- * "couldn't read the amount") is `placed`: the caller must then treat full-vs-
- * partial as unknown and defer to the refreshed portfolio, never asserting a
- * closed size from the response.
+ * We deliberately do NOT derive a fill *fraction* from `OrderResponse.making
+ * Amount`. It's a 6-decimal fixed-point string (Polymarket amounts are 6dp),
+ * but the refreshed portfolio is the authoritative residual, so scaling it to
+ * compare against a position size buys nothing and risks a wrong "partial"
+ * claim. The only signal we take is the coarse one: did anything match?
+ *
+ * The trap this guards: the CLOB's success response can carry makingAmount as
+ * an EMPTY string (documented), and `Number("") === 0` — so an empty/whitespace
+ * value must NOT read as a zero fill, or a genuine close would be mislabeled
+ * "nothing filled / position unchanged". We return `nofill` ONLY for an
+ * explicit, non-empty numeric zero (e.g. "0", "0.000000", or 0). Anything else
+ * — a real match, an empty/absent field, or a non-numeric value — is `placed`,
+ * and the caller defers completeness to the refreshed portfolio.
+ *
+ * Note the `nofill` reading (makingAmount 0 ⇒ nothing matched) is the natural
+ * semantics but is not spec-guaranteed, so the caller's copy points at the
+ * portfolio rather than flatly asserting the position is unchanged.
  */
 export function classifyFakFill(resp: unknown): "nofill" | "placed" {
   const raw = (resp as { makingAmount?: unknown } | null | undefined)
     ?.makingAmount;
-  if (typeof raw !== "string" && typeof raw !== "number") return "placed";
-  const n = Number(raw);
-  return Number.isFinite(n) && n === 0 ? "nofill" : "placed";
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) && raw === 0 ? "nofill" : "placed";
+  }
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    if (s === "") return "placed"; // empty ≠ zero — Number("") === 0 is a trap
+    const n = Number(s);
+    return Number.isFinite(n) && n === 0 ? "nofill" : "placed";
+  }
+  return "placed";
 }
 
 /** Submit a Fill-and-Kill market order: take whatever the book offers up to

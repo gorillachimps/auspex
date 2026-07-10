@@ -255,20 +255,17 @@ export function PortfolioView() {
         );
       }
       // A FAK fills whatever depth exists and kills the remainder, so it may be
-      // a PARTIAL fill. We CANNOT reliably compute how much filled from the
-      // response: OrderResponse.makingAmount is an untyped string with no
-      // documented unit (decimal shares vs 6-decimal base units — the SDK
-      // exports COLLATERAL_TOKEN_DECIMALS=6), so scaling it against p.size would
-      // be a guess. The authoritative residual is the refreshed portfolio, which
-      // the dispatched refetch below updates. So we DON'T claim a closed amount
-      // here. The one unit-independent fact we can read is zero: makingAmount
-      // parsing to exactly 0 means nothing matched (0 is 0 in any unit).
+      // a PARTIAL fill. We deliberately DON'T claim a closed amount from the
+      // response — makingAmount is a 6dp fixed-point string, but the refreshed
+      // portfolio (the dispatched refetch below) is the authoritative residual,
+      // so scaling it buys nothing and risks a wrong "partial" claim. We take
+      // only the coarse matched-anything? signal (see classifyFakFill).
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("auspex:order-placed"));
       }
       if (classifyFakFill(resp) === "nofill") {
         toast.error(
-          "Nothing filled — no resting liquidity at a fillable price right now. Your position is unchanged; try again as the book refreshes.",
+          "No liquidity to fill this close right now — check your portfolio; your position should be unchanged. Try again as the book refreshes.",
           { id: toastId, duration: 8000 },
         );
         return "nofill";

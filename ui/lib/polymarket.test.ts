@@ -28,4 +28,13 @@ describe("classifyFakFill", () => {
     expect(classifyFakFill(null)).toBe("placed");
     expect(classifyFakFill(undefined)).toBe("placed");
   });
+
+  it("does NOT treat an empty/whitespace string as a zero fill", () => {
+    // The CLOB success response can carry makingAmount as "" (documented), and
+    // Number("") === 0 — so an empty value must NOT read as nofill, or a real
+    // close would be mislabeled "nothing filled / position unchanged".
+    expect(classifyFakFill({ makingAmount: "" })).toBe("placed");
+    expect(classifyFakFill({ makingAmount: "   " })).toBe("placed");
+    expect(classifyFakFill({ makingAmount: "\t\n" })).toBe("placed");
+  });
 });
