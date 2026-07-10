@@ -27,12 +27,25 @@ export type Notification = {
  * Notifications live in localStorage, which is attacker-influenceable on shared
  * machines / via XSS, yet `url` is rendered as a trusted `<a href>`. Every
  * legitimate notification links to a same-origin deep link ("/portfolio",
- * "/markets/..."), so accept ONLY root-relative paths. This rejects external
- * URLs, protocol-relative "//evil.com", and "javascript:"/"data:" schemes.
+ * "/markets/..."), so accept ONLY root-relative paths.
+ *
+ * The prefix checks alone are bypassable — browsers normalise backslashes to
+ * slashes in URLs, so "/\evil.com" resolves as "//evil.com" → https://evil.com.
+ * The authoritative check is the WHATWG URL parse against a fixed probe origin:
+ * if resolving `u` escapes that origin in ANY way (backslashes, schemes,
+ * protocol-relative, whatever future quirk), reject it.
  */
-function safeNotificationUrl(u: unknown): string | undefined {
+const ORIGIN_PROBE = "https://origin-probe.invalid";
+export function safeNotificationUrl(u: unknown): string | undefined {
   if (typeof u !== "string") return undefined;
-  if (!u.startsWith("/") || u.startsWith("//")) return undefined;
+  if (!u.startsWith("/") || u.startsWith("//") || u.startsWith("/\\")) {
+    return undefined;
+  }
+  try {
+    if (new URL(u, ORIGIN_PROBE).origin !== ORIGIN_PROBE) return undefined;
+  } catch {
+    return undefined;
+  }
   return u;
 }
 

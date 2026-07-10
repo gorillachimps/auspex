@@ -14,6 +14,7 @@ import {
 import { useBalance, usePublicClient, useWalletClient } from "wagmi";
 import { toast } from "sonner";
 import { erc20Abi, formatUnits, parseUnits } from "viem";
+import { polygon } from "viem/chains";
 import {
   bridgeQuote,
   executeBridge,
@@ -179,6 +180,35 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
   const hasAllowance =
     allowance != null && amountUSDC != null && allowance >= amountUSDC;
 
+  // Positive on-chain deployment check of the DESTINATION account. The funder
+  // prop can come from the localStorage cache, which is only derivation-checked
+  // (CREATE2), not deployment-checked — and bridging USDC to a derivable-but-
+  // undeployed proxy would strand it. Fail CLOSED: bridging stays blocked until
+  // bytecode is positively confirmed (null = unverified, e.g. RPC error).
+  const polygonClient = usePublicClient({ chainId: polygon.id });
+  const [recipientDeployed, setRecipientDeployed] = useState<boolean | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!open || !toAddress || !polygonClient) {
+      setRecipientDeployed(null);
+      return;
+    }
+    let cancelled = false;
+    setRecipientDeployed(null);
+    polygonClient
+      .getCode({ address: toAddress })
+      .then((code) => {
+        if (!cancelled) setRecipientDeployed(!!code && code !== "0x");
+      })
+      .catch(() => {
+        if (!cancelled) setRecipientDeployed(null); // unverified → stays blocked
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, toAddress, polygonClient]);
+
   // Debounced quote fetch.
   useEffect(() => {
     if (!open) return;
@@ -229,6 +259,7 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
     !walletClient ||
     !eoa ||
     !toAddress ||
+    recipientDeployed !== true ||
     !quote ||
     quoting ||
     insufficient ||
@@ -439,6 +470,18 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
             <ArrowDown className="h-3 w-3 text-muted-2" />
           </div>
         </div>
+
+        {/* Destination deployment gate — see recipientDeployed above. */}
+        {recipientDeployed !== true ? (
+          <div
+            role="alert"
+            className="mb-2 rounded-md border border-amber-400/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200"
+          >
+            {recipientDeployed === false
+              ? "Your Polymarket account isn't deployed on-chain yet — finish creating it on Polymarket before bridging. Funds sent to an undeployed account would be stranded."
+              : "Confirming your Polymarket account on-chain… Bridging unlocks once it's verified (reopen the dialog to retry if this persists)."}
+          </div>
+        ) : null}
 
         {/* To section — fixed destination */}
         <div className="rounded-md border border-border bg-background/40 px-3 py-3">

@@ -757,7 +757,11 @@ export function OrderTicket({
         ) : blocker ? (
           <div className="mt-3 flex items-start justify-between gap-3 rounded-md border border-amber-400/30 bg-amber-500/10 px-3 py-2">
             <span className="text-[12px] text-amber-200">{blocker}</span>
-            {/^Insufficient pUSD/.test(blocker) && session.funderAddress ? (
+            {/^Insufficient pUSD/.test(blocker) &&
+            session.funderAddress &&
+            session.funderDeployed === true ? (
+              // Gate on confirmed deployment — a cached funder is only
+              // CREATE2-checked, and bridging to an undeployed proxy strands it.
               <BridgeButton
                 toAddress={session.funderAddress}
                 variant="secondary"

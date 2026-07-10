@@ -208,10 +208,15 @@ export function PortfolioView() {
   // most binary markets use 0.01 and the SDK will reject if wrong, so we
   // surface that as a toast error). Builder code rides on every order via
   // placeMarketOrder.
-  async function closeOne(p: Position): Promise<boolean> {
+  //
+  // Returns what actually happened, not just "order accepted": a FAK fills
+  // whatever depth exists and kills the rest, so acceptance ≠ closed. The bulk
+  // sweep aggregates these so it can't report "Closed all" over residuals.
+  type CloseResult = "full" | "partial" | "unknown" | "failed";
+  async function closeOne(p: Position): Promise<CloseResult> {
     if (!session.client) {
       toast.error("Sign in to close positions.");
-      return false;
+      return "failed";
     }
     // A redeemable position is in a *resolved* market — there is no order book
     // to sell into, so a market-sell can't work (the CLOB rejects the ~$1.00
@@ -221,9 +226,9 @@ export function PortfolioView() {
         "This market has resolved — redeem it to claim your winnings, not close it.",
         { duration: 6000 },
       );
-      return false;
+      return "failed";
     }
-    if (closing.has(p.asset)) return false;
+    if (closing.has(p.asset)) return "failed";
     setClosing((s) => new Set(s).add(p.asset));
     // Never declare a tick size here: our snapshot's gamma ticks are stale
     // for some markets (a BTC daily carried 0.01 while the CLOB's real tick
@@ -248,17 +253,47 @@ export function PortfolioView() {
           (resp as { errorMsg?: string }).errorMsg || "order rejected",
         );
       }
-      // FAK fills whatever depth exists and kills the remainder, so this may be
-      // a PARTIAL fill — don't claim the full size closed. Trigger an immediate
-      // positions refetch and let the refreshed portfolio show any residual.
+      // FAK fills whatever depth exists and kills the remainder — read the
+      // matched amount off the response instead of assuming the full size
+      // closed. For our SELL, makingAmount = shares actually sold. Trigger an
+      // immediate positions refetch either way so residuals show promptly.
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("auspex:order-placed"));
       }
+      const makingRaw = (resp as { makingAmount?: unknown })?.makingAmount;
+      const matched =
+        typeof makingRaw === "string" || typeof makingRaw === "number"
+          ? Number(makingRaw)
+          : NaN;
+      // CLOB share amounts round to 2dp; within a cent-of-shares (or 1%) of
+      // the requested size counts as fully closed.
+      const tol = Math.max(0.01, p.size * 0.01);
+      if (!Number.isFinite(matched)) {
+        toast.success(
+          `Close order filled — ${p.outcome.toUpperCase()} · ${p.title.slice(0, 40)}. Updating your position…`,
+          { id: toastId, duration: 5000 },
+        );
+        return "unknown";
+      }
+      if (matched <= 0) {
+        toast.error(
+          "Nothing filled — no resting liquidity at a fillable price. Try again as the book refreshes.",
+          { id: toastId, duration: 8000 },
+        );
+        return "failed";
+      }
+      if (matched < p.size - tol) {
+        toast.warning(
+          `Partially closed — ${matched.toFixed(2)} of ${p.size.toFixed(2)} ${p.outcome.toUpperCase()} filled; the book couldn't absorb the rest. Close again for the remainder.`,
+          { id: toastId, duration: 8000 },
+        );
+        return "partial";
+      }
       toast.success(
-        `Close order filled — ${p.outcome.toUpperCase()} · ${p.title.slice(0, 40)}. Updating your position…`,
+        `Closed ${p.size.toFixed(2)} ${p.outcome.toUpperCase()} — ${p.title.slice(0, 40)}.`,
         { id: toastId, duration: 5000 },
       );
-      return true;
+      return "full";
     } catch (e) {
       const msg = (e as Error).message ?? "unknown error";
       // With the SDK resolving the market's true tick, a price-band rejection
@@ -271,7 +306,7 @@ export function PortfolioView() {
           : `Couldn't close: ${msg}`,
         { id: toastId, duration: 8000 },
       );
-      return false;
+      return "failed";
     } finally {
       setClosing((s) => {
         const next = new Set(s);
@@ -303,24 +338,38 @@ export function PortfolioView() {
     }
     setCloseAllMode("running");
     setBulkProgress({ done: 0, failed: 0, total: positions.length });
-    let done = 0;
+    // Aggregate the HONEST per-position outcomes: a FAK acceptance can be a
+    // partial fill, so "order went through" must not count as "closed".
+    let full = 0;
+    let partial = 0;
+    let unknown = 0;
     let failed = 0;
     for (const p of positions) {
-      const ok = await closeOne(p);
-      if (ok) done += 1;
+      const res = await closeOne(p);
+      if (res === "full") full += 1;
+      else if (res === "partial") partial += 1;
+      else if (res === "unknown") unknown += 1;
       else failed += 1;
-      setBulkProgress({ done, failed, total: positions.length });
+      // Progress bar counts orders that landed (incl. partial/unconfirmed).
+      setBulkProgress({
+        done: full + partial + unknown,
+        failed,
+        total: positions.length,
+      });
     }
     setCloseAllMode(null);
     setBulkProgress(null);
     const tail = skipped > 0 ? ` (${skipped} resolved — redeem separately)` : "";
-    if (failed === 0) {
-      toast.success(`Closed all ${done} positions.${tail}`, { duration: 5000 });
+    if (failed === 0 && partial === 0 && unknown === 0) {
+      toast.success(`Closed all ${full} positions.${tail}`, { duration: 5000 });
     } else {
-      toast.warning(
-        `Closed ${done} of ${positions.length} positions — ${failed} failed.${tail}`,
-        { duration: 7000 },
-      );
+      const parts = [`${full} closed`];
+      if (partial > 0) parts.push(`${partial} partial (residual remains)`);
+      if (unknown > 0) parts.push(`${unknown} unconfirmed`);
+      if (failed > 0) parts.push(`${failed} failed`);
+      toast.warning(`Close sweep finished: ${parts.join(", ")}.${tail}`, {
+        duration: 8000,
+      });
     }
   }
 

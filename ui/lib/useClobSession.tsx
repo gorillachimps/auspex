@@ -10,7 +10,13 @@ import {
   type ReactNode,
 } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { createWalletClient, custom, type WalletClient } from "viem";
+import {
+  createPublicClient,
+  createWalletClient,
+  custom,
+  http,
+  type WalletClient,
+} from "viem";
 import { polygon } from "viem/chains";
 import type { ClobClient } from "@polymarket/clob-client-v2";
 import { toast } from "sonner";
@@ -21,7 +27,7 @@ import {
   writeFunderAddress,
   FUNDER_CHANGED_EVENT,
 } from "./polymarket";
-import { isPrivyConfigured } from "./env-client";
+import { isPrivyConfigured, POLYGON_RPC_URL } from "./env-client";
 import { findPolymarketProxy } from "./findPolymarketProxy";
 import { classifyProxy } from "./polymarketDerive";
 
@@ -40,6 +46,12 @@ export type ClobSession = {
   status: ClobSessionStatus;
   signerAddress: `0x${string}` | null;
   funderAddress: `0x${string}` | null;
+  /** On-chain deployment state of funderAddress. true = bytecode confirmed;
+   *  false = derivable but NOT deployed; null = unknown/unchecked/RPC error.
+   *  Fund-movement surfaces (bridge/onramp) MUST require `=== true` before
+   *  routing USDC — a cached funder is only CREATE2-checked, not deployment-
+   *  checked, and sending to an undeployed proxy strands the funds. */
+  funderDeployed: boolean | null;
   client: ClobClient | null;
   error: string | null;
   /** Refresh the wallet/funder/creds detection. Call after the user updates
@@ -57,6 +69,7 @@ const DISABLED: ClobSession = {
   status: "disabled",
   signerAddress: null,
   funderAddress: null,
+  funderDeployed: null,
   client: null,
   error: null,
   refresh: () => {},
@@ -65,6 +78,13 @@ const DISABLED: ClobSession = {
 };
 
 const ClobSessionContext = createContext<ClobSession>(DISABLED);
+
+// Read-only Polygon client for confirming a funder is actually deployed on
+// chain (see funderDeployed). Module-scoped so it's shared across the app.
+const polygonReadClient = createPublicClient({
+  chain: polygon,
+  transport: http(POLYGON_RPC_URL),
+});
 
 /**
  * Read the cached funder, but ONLY trust it if it is still CREATE2-derivable
@@ -120,6 +140,32 @@ function useClobSessionState(): ClobSession {
     }
     setFunder(readTrustedFunder(eoa));
   }, [eoa, refreshTick]);
+
+  // Confirm the funder is actually deployed on-chain. A cached funder is only
+  // CREATE2-derivation-checked (readTrustedFunder), NOT deployment-checked, so
+  // this is the guard that fund-movement surfaces gate on. Fail-closed: any
+  // error leaves funderDeployed null (unconfirmed → bridging stays blocked),
+  // but the funder itself is kept so trading/position reads still work.
+  const [funderDeployed, setFunderDeployed] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!funder) {
+      setFunderDeployed(null);
+      return;
+    }
+    let cancelled = false;
+    setFunderDeployed(null);
+    polygonReadClient
+      .getCode({ address: funder })
+      .then((code) => {
+        if (!cancelled) setFunderDeployed(!!code && code !== "0x");
+      })
+      .catch(() => {
+        if (!cancelled) setFunderDeployed(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [funder]);
 
   // Auto-link: when a wallet connects and has no cached funder, derive their
   // Polymarket account via /api/find-proxy (deterministic CREATE2 + on-chain
@@ -354,12 +400,13 @@ function useClobSessionState(): ClobSession {
       status,
       signerAddress: eoa ?? null,
       funderAddress: funder,
+      funderDeployed,
       client,
       error,
       refresh,
       ensureClient,
     }),
-    [status, eoa, funder, client, error, refresh, ensureClient],
+    [status, eoa, funder, funderDeployed, client, error, refresh, ensureClient],
   );
 }
 

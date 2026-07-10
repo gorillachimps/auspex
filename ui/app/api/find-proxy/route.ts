@@ -340,14 +340,18 @@ async function forwardLookup(eoa: string, apiKey: string): Promise<Result> {
   // deposit wallet), and we must bind the one that actually holds funds — not
   // just the first by priority order, which could be empty.
   const deployed: typeof candidates = [];
-  let hadError = false;
+  // Candidates whose deployment check FAILED (not "checked and undeployed") —
+  // each is a possible hiding place for the user's real account, so the binding
+  // logic below must rule them out by balance before committing to another.
+  const unchecked: typeof candidates = [];
   for (const c of candidates) {
     try {
       if (await isDeployed(c.address, apiKey)) deployed.push(c);
     } catch {
-      hadError = true;
+      unchecked.push(c);
     }
   }
+  const hadError = unchecked.length > 0;
 
   const UNAVAILABLE: Result = {
     // "Couldn't check" (client treats this as unavailable) — never a false
@@ -397,10 +401,20 @@ async function forwardLookup(eoa: string, apiKey: string): Promise<Result> {
   }
   if (chosenIdx !== 0 && !(bal[chosenIdx] > bal[0])) chosenIdx = 0;
 
-  // A candidate deployment check failed AND the account we'd bind is empty:
-  // the user's funds may sit in the account we couldn't check. Don't bind an
-  // empty account and cache it for an hour — treat as unavailable.
-  if (hadError && bal[chosenIdx] === 0n) return UNAVAILABLE;
+  // Rule out every candidate whose DEPLOYMENT check failed before binding
+  // another account: the user's real funds may sit behind that failure, and a
+  // token-balance read works regardless of deployment state. Only bind when
+  // each unchecked candidate provably holds no more than the chosen one; any
+  // unreadable balance, or a bigger balance behind the failed check, means we
+  // can't rank reliably — tell the client to retry instead of guessing.
+  if (unchecked.length > 0) {
+    const uncheckedBalances = await Promise.all(
+      unchecked.map((c) => collateralBalance(c.address, apiKey)),
+    );
+    for (const ub of uncheckedBalances) {
+      if (ub === null || ub > bal[chosenIdx]) return UNAVAILABLE;
+    }
+  }
 
   return found(deployed[chosenIdx]);
 }

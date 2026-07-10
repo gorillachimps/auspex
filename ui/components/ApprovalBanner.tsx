@@ -74,11 +74,21 @@ export function ApprovalBanner() {
             . Bridge USDC in from any chain — Auspex never holds your funds.
           </span>
           <span className="ml-auto">
-            <BridgeButton
-              toAddress={session.funderAddress}
-              variant="primary"
-              label="Bridge USDC"
-            />
+            {/* Only offer to bridge once the funder is confirmed deployed —
+                sending USDC to a derivable-but-undeployed proxy strands it. */}
+            {session.funderDeployed === true ? (
+              <BridgeButton
+                toAddress={session.funderAddress}
+                variant="primary"
+                label="Bridge USDC"
+              />
+            ) : (
+              <span className="text-[12px] text-amber-100/70">
+                {session.funderDeployed === false
+                  ? "Finish creating your account on Polymarket to enable funding."
+                  : "Confirming your account on-chain…"}
+              </span>
+            )}
           </span>
         </div>
       </div>

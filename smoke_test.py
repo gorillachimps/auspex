@@ -77,10 +77,12 @@ def pick_test_market() -> dict:
     raise RuntimeError("no suitable market found")
 
 
-def best_ask(token_id: str) -> float | None:
-    """Lowest resting ask via the public CLOB /book endpoint (no auth needed).
-    min() over the ask prices is order-agnostic, so we don't depend on the
-    book's array convention."""
+def best_ask(token_id: str) -> tuple[bool, float | None]:
+    """(ok, price): lowest resting ask via the public CLOB /book endpoint.
+    ok=False means the book could NOT be read at all — callers must treat that
+    as "unverified" and abort, not proceed. ok=True with price=None is a
+    genuinely empty ask side (nothing to cross). min() over the ask prices is
+    order-agnostic, so we don't depend on the book's array convention."""
     try:
         r = requests.get(
             f"{CLOB_HOST}/book", params={"token_id": token_id}, timeout=15
@@ -88,9 +90,9 @@ def best_ask(token_id: str) -> float | None:
         r.raise_for_status()
         asks = r.json().get("asks") or []
         prices = [float(a["price"]) for a in asks if a.get("price")]
-        return min(prices) if prices else None
+        return True, (min(prices) if prices else None)
     except Exception:
-        return None
+        return False, None
 
 
 def dump(label: str, value) -> None:
@@ -135,8 +137,17 @@ def main() -> int:
     test_size = 5
 
     # Prove it's actually off-book before sending real money: if the best ask is
-    # at/below our price, a BUY would cross and fill. Abort rather than trade.
-    ask = best_ask(market["token_id"])
+    # at/below our price, a BUY would cross and fill. Abort rather than trade —
+    # and fail CLOSED when the book can't be read at all: an unverifiable order
+    # must never be treated as off-book.
+    book_ok, ask = best_ask(market["token_id"])
+    if not book_ok:
+        print(
+            "Couldn't read the order book, so the test order can't be verified "
+            "as off-book. Aborting before sending real money — retry when the "
+            "CLOB /book endpoint responds."
+        )
+        return 1
     if ask is not None and ask <= test_price:
         print(
             f"Best ask ${ask} is at/below the test price ${test_price} — a BUY "
@@ -145,7 +156,7 @@ def main() -> int:
         )
         return 1
     if ask is None:
-        print("Warning: couldn't read the book to confirm the order is off-book.")
+        print("Ask side is empty — nothing to cross; safe to place the resting order.")
 
     print(f"[1/3] place BUY {test_size}@${test_price} builder_code={BUILDER_CODE[:10]}...")
     resp = client.create_and_post_order(
