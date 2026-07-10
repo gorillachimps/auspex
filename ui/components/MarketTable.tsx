@@ -227,7 +227,7 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters, de
         header: () => (
           <Tooltip
             label="Distance"
-            hint="How far the live value is from triggering YES. 0% = right at the line, +5% = already above, −10% = needs to fall 10% more. Click to sort closest-to-trigger first."
+            hint="How far the live value still has to move to trigger YES. 0% = right at the line, +5% = a 5% move still needed; a ✓ pill replaces the number once the trigger has been crossed. Click to sort closest-to-trigger first."
           />
         ),
         cell: ({ row }) => {
@@ -377,7 +377,10 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters, de
         header: () => null,
         cell: ({ row }) => {
           const r = row.original;
-          const tradable = !!r.tokenYes && !!r.tokenNo;
+          // Mirror MobileMarketList: never offer an order entry point on a
+          // market whose close date has passed — the CLOB rejects those.
+          const tradable =
+            !!r.tokenYes && !!r.tokenNo && urgencyForEnd(r.endDate) !== "ended";
           const open = (outcome: "yes" | "no") => {
             if (typeof window === "undefined" || !tradable) return;
             window.dispatchEvent(
@@ -476,7 +479,9 @@ export function MarketTable({ rows, sorting, onSortingChange, onClearFilters, de
                       "border-b border-border bg-surface/40 px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-muted",
                       isSortable && "cursor-pointer select-none hover:text-foreground",
                     )}
-                    role={isSortable ? "button" : undefined}
+                    // No role="button" here — it would replace the columnheader
+                    // semantics screen readers need. aria-sort + keyboard
+                    // handlers below keep the header operable.
                     tabIndex={isSortable ? 0 : undefined}
                     onClick={isSortable ? sortHandler : undefined}
                     onKeyDown={

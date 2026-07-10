@@ -255,7 +255,11 @@ export function WatchlistsView({ rows }: Props) {
             body={
               <>
                 Click the{" "}
-                <Star className="inline h-3 w-3 align-text-top text-muted-2" />{" "}
+                <Star
+                  role="img"
+                  aria-label="star"
+                  className="inline h-3 w-3 align-text-top text-muted-2"
+                />{" "}
                 on any market in the screener to pin it here. Watchlists live
                 in your browser — there&apos;s no account required.
               </>

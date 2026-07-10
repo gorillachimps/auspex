@@ -1,8 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getRawMarkets, getSnapshotMeta } from "@/lib/data";
-
-const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+import { SITE_URL } from "@/lib/env-client";
 
 // Cap the per-market section so the sitemap stays under the 50k-URL guidance and
 // only ranks markets with real liquidity / volume.

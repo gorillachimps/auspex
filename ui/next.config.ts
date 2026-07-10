@@ -4,9 +4,15 @@ import type { NextConfig } from "next";
 // legacy X-Frame-Options stop any third-party origin from iframing the app
 // to clickjack the wallet-signing surfaces (order submit, close-all, bridge
 // approve). nosniff/HSTS/Referrer-Policy are baseline hardening.
+// object-src/base-uri close off plugin embedding and <base>-tag hijacking at
+// zero compatibility risk. A full default-src/script-src policy needs nonce
+// plumbing through Privy/WalletConnect and is deliberately not attempted here.
 const SECURITY_HEADERS = [
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
-  { key: "Content-Security-Policy", value: "frame-ancestors 'self';" },
+  {
+    key: "Content-Security-Policy",
+    value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self';",
+  },
   { key: "X-Content-Type-Options", value: "nosniff" },
   {
     key: "Strict-Transport-Security",
@@ -34,7 +40,10 @@ const nextConfig: NextConfig = {
       {
         source: "/embed/:slug*",
         headers: [
-          { key: "Content-Security-Policy", value: "frame-ancestors *;" },
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors *; object-src 'none'; base-uri 'self';",
+          },
           { key: "X-Frame-Options", value: "ALLOWALL" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           {

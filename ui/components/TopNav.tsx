@@ -14,19 +14,20 @@ type ActiveTab =
   | "api"
   | "docs";
 
-// `hideOn` lets us drop low-priority tabs on narrow viewports so the row never
-// crowds the Connect button on phones.
+// `hideOn: "small"` drops low-priority tabs below md so the single-row layout
+// never crowds the Connect button. Below sm the nav wraps to its own full-width
+// scrollable row (see TopNav), so every primary tab stays reachable on phones.
 const TABS: Array<{
   id: ActiveTab;
   label: string;
   href: string;
-  hideOn?: "mobile" | "small";
+  hideOn?: "small";
 }> = [
   { id: "screener", label: "Screener", href: "/" },
   { id: "watchlists", label: "Watchlists", href: "/watchlists" },
-  { id: "portfolio", label: "Portfolio", href: "/portfolio", hideOn: "mobile" },
-  { id: "activity", label: "Activity", href: "/activity", hideOn: "mobile" },
-  { id: "wallets", label: "Wallets", href: "/wallets", hideOn: "mobile" },
+  { id: "portfolio", label: "Portfolio", href: "/portfolio" },
+  { id: "activity", label: "Activity", href: "/activity" },
+  { id: "wallets", label: "Wallets", href: "/wallets" },
   { id: "api", label: "API", href: "/api", hideOn: "small" },
   { id: "docs", label: "Docs", href: "/docs", hideOn: "small" },
 ];
@@ -36,8 +37,10 @@ type Props = { active?: ActiveTab };
 export function TopNav({ active = "screener" }: Props) {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
-      <div className="mx-auto flex h-12 max-w-[1480px] items-center gap-3 px-3 sm:gap-6 sm:px-4">
-        <a href="/" className="flex shrink-0 items-center gap-2 text-sm font-semibold tracking-tight">
+      {/* Below sm the nav wraps to its own full-width row (order-last) so the
+          logo + controls row fits a 390px viewport without horizontal overflow. */}
+      <div className="mx-auto flex min-h-12 max-w-[1480px] flex-wrap items-center gap-x-3 px-3 sm:h-12 sm:flex-nowrap sm:gap-6 sm:px-4">
+        <a href="/" className="flex shrink-0 items-center gap-2 py-2 text-sm font-semibold tracking-tight sm:py-0">
           <img
             src="/logo.png"
             alt=""
@@ -51,15 +54,11 @@ export function TopNav({ active = "screener" }: Props) {
             beta
           </span>
         </a>
-        <nav className="flex items-center gap-0.5 text-[13px] sm:gap-1">
+        <nav className="order-last -mx-3 flex w-[calc(100%+1.5rem)] items-center gap-0.5 overflow-x-auto whitespace-nowrap border-t border-border/60 px-3 py-1.5 text-[13px] sm:order-none sm:mx-0 sm:w-auto sm:overflow-visible sm:border-t-0 sm:p-0 sm:gap-1">
           {TABS.map((t) => {
             const isActive = active === t.id;
             const hideClass =
-              t.hideOn === "mobile"
-                ? "hidden sm:inline-block"
-                : t.hideOn === "small"
-                  ? "hidden md:inline-block"
-                  : "";
+              t.hideOn === "small" ? "hidden md:inline-block" : "";
             return (
               <a
                 key={t.id}
@@ -77,7 +76,7 @@ export function TopNav({ active = "screener" }: Props) {
             );
           })}
         </nav>
-        <div className="ml-auto flex shrink-0 items-center gap-2 text-xs">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 text-xs sm:gap-2">
           <HowItWorks />
           <ShortcutsHelpButton />
           <NotificationsInbox />

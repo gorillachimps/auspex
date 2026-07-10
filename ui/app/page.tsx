@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { TopNav } from "@/components/TopNav";
 import { ApprovalBanner } from "@/components/ApprovalBanner";
 import { Footer } from "@/components/Footer";
@@ -6,6 +7,12 @@ import { HomeShell } from "@/components/HomeShell";
 import { getMarkets, getSnapshotMeta } from "@/lib/data";
 import { getLivePrices } from "@/lib/livePrices";
 import { applyLivePrices } from "@/lib/liveOverlay";
+
+// Resolved against metadataBase (root layout) to the canonical www origin.
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+  openGraph: { url: "/" },
+};
 
 const MAX_ROWS = 500;
 

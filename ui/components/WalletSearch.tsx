@@ -88,7 +88,9 @@ export function WalletSearch() {
         </button>
       </div>
       {error ? (
-        <p className="mt-1.5 text-[11px] text-rose-300">{error}</p>
+        <p role="alert" className="mt-1.5 text-[11px] text-rose-300">
+          {error}
+        </p>
       ) : (
         <p className="mt-1.5 text-[11px] text-muted-2">
           EOAs auto-resolve to their Polymarket account. ENS names supported.

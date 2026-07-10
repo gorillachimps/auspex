@@ -22,10 +22,12 @@ export function HowItWorks() {
         type="button"
         onClick={() => setOpen(true)}
         title="How does this work?"
+        aria-label="How it works"
         className="inline-flex h-7 items-center gap-1 rounded-full border border-border-strong bg-surface px-2 text-[11px] font-medium text-muted hover:bg-surface-2 hover:text-foreground"
       >
         <HelpCircle className="h-3 w-3" aria-hidden="true" />
-        How it works
+        {/* Icon-only below sm — the label is what blew the 390px header row. */}
+        <span className="hidden sm:inline">How it works</span>
       </button>
 
       {open && typeof document !== "undefined"

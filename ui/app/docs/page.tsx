@@ -35,7 +35,7 @@ export default function DocsPage() {
               resolves YES if Binance BTC/USDT ever closes at or above
               $150,000 before the deadline. Auspex reads the current BTC
               price, computes the gap to $150k, and shows that{" "}
-              <em>distance</em> next to the market&apos;s implied odds. Your
+              <em>distance</em>{" "}next to the market&apos;s implied odds. Your
               edge isn&apos;t our forecast — it&apos;s the gap between what
               the market thinks and what the data says.
             </p>
@@ -74,16 +74,19 @@ export default function DocsPage() {
 
           <Section id="delta" title="Distance">
             <p>
-              How far the live value is from the trigger that flips the market
-              to YES. <span className="text-emerald-300">Positive</span> means
-              already above the line;{" "}
-              <span className="text-rose-300">negative</span> means below.
-              Either way, smaller (in absolute value) = closer to triggering.
+              How far the live value still has to move to reach the trigger
+              that flips the market to YES.{" "}
+              <span className="text-emerald-300">Positive</span> means the
+              trigger hasn&apos;t been hit yet — the number is the move still
+              required (a rise for &quot;above&quot; markets, a fall for
+              &quot;dip&quot; markets).{" "}
+              <span className="text-rose-300">Negative</span> means the value
+              is already past the line. Smaller = closer to triggering.
             </p>
             <p className="mt-3">
               The bar visualises both halves: green = how close we are, red =
-              how far is still left. A ✓ <em>triggered</em> pill replaces the
-              bar once the trigger has been crossed at any point in the
+              how far is still left. A ✓ <em>triggered</em>{" "}pill replaces
+              the bar once the trigger has been crossed at any point in the
               market&apos;s history.
             </p>
             <p className="mt-3">

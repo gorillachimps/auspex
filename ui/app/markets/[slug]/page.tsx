@@ -48,6 +48,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `${row.question} · Auspex`,
     description: summarizeRules(row),
+    // row.slug (not the request param) so drifted/legacy slugs that resolve
+    // via the base-slug fallback canonicalise to the current URL.
+    alternates: { canonical: `/markets/${row.slug}` },
+    openGraph: { url: `/markets/${row.slug}` },
   };
 }
 
@@ -258,7 +262,7 @@ export default async function MarketDetailPage({ params, searchParams }: Props) 
             <p className="mt-3 text-[12px] leading-relaxed text-muted">
               Outcomes are finalized by Polymarket via UMA&apos;s optimistic
               oracle: a proposed result can be challenged during a dispute window
-              before it settles. {resolutionStateNote(row)} Auspex doesn&apos;t
+              before it settles. {resolutionStateNote(row)}{" "}Auspex doesn&apos;t
               control resolution — confirm the live oracle status on{" "}
               <a
                 href={`https://polymarket.com/event/${row.slug}`}

@@ -2,8 +2,12 @@
 // a deploy is missing a required value rather than silently failing at runtime.
 
 export const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
-export const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+// Canonical public origin. Vercel serves the site on www (the apex 307s to
+// it), so normalise an apex-configured NEXT_PUBLIC_SITE_URL to the www host —
+// otherwise every sitemap/canonical/OG URL we emit points at a redirect.
+export const SITE_URL = (
+  process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"
+).replace(/^https?:\/\/auspex\.to/, "https://www.auspex.to");
 export const POLYGON_RPC_URL =
   process.env.NEXT_PUBLIC_POLYGON_RPC_URL ?? "https://polygon-rpc.com";
 
