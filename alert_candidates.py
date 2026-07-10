@@ -155,23 +155,25 @@ def main() -> None:
         if not args.no_book_check and (not token or not book_is_live(token)):
             continue
 
-        live = m["live"]
         implied = m.get("implied_yes")
-        implied_str = f"{round(implied * 100)}% YES" if isinstance(implied, (int, float)) else ""
-        pair = m.get("pair") or ""
-        spot = live.get("current_value")
         tl = fmt_timeleft(m.get("end_date") or "", now) or "soon"
+
+        # Tweet shape: hook first (the tension — distance + clock + odds),
+        # then the market's own question verbatim (safe for every phrasing,
+        # incl. "between X and Y" markets), then the link. No spot/threshold
+        # restatement — near the trigger they round to the same number and
+        # read as a bug ("$1.10 · trigger $1.10").
+        hook = [f"⚡ {dist * 100:.1f}% from the trigger", f"{tl} left"]
+        if isinstance(implied, (int, float)):
+            hook.append(f"YES at {round(implied * 100)}%")
 
         printed += 1
         state[m["slug"]] = now_s
         print(f"--- {printed} " + "-" * 58)
-        print(f"⚡ {m['question']} — {implied_str}")
-        line2 = []
-        if pair and isinstance(spot, (int, float)):
-            line2.append(f"{pair} {fmt_price(spot)}")
-        line2.append(f"{dist * 100:.1f}% from trigger")
-        line2.append(f"{tl} left")
-        print(" · ".join(line2))
+        print(" · ".join(hook))
+        print()
+        print(m["question"])
+        print()
         print(f"{SITE}{m['slug']}")
         print()
 
