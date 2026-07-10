@@ -596,8 +596,15 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
         <div className="mt-5 flex items-center justify-between gap-2">
           <div className="text-[11px] text-muted-2">
             Need BSC or another route?{" "}
+            {/* Pre-fill the recipient ONLY once it's confirmed deployed — same
+                gate as the in-app submit. Otherwise the escape-hatch link would
+                hand an unverified (possibly undeployed) address straight to
+                Jumper, re-opening the strand-funds path. The link still works
+                without a prefill; the user enters the destination on Jumper. */}
             <BridgeButton
-              toAddress={toAddress ?? undefined}
+              toAddress={
+                recipientDeployed === true ? (toAddress ?? undefined) : undefined
+              }
               variant="inline"
               label="Open Jumper"
             />

@@ -403,16 +403,19 @@ async function forwardLookup(eoa: string, apiKey: string): Promise<Result> {
 
   // Rule out every candidate whose DEPLOYMENT check failed before binding
   // another account: the user's real funds may sit behind that failure, and a
-  // token-balance read works regardless of deployment state. Only bind when
-  // each unchecked candidate provably holds no more than the chosen one; any
-  // unreadable balance, or a bigger balance behind the failed check, means we
-  // can't rank reliably — tell the client to retry instead of guessing.
+  // token-balance read works regardless of deployment state. Only bind the
+  // chosen account when each unchecked candidate holds STRICTLY LESS collateral
+  // than it. Reject (retry) on an equal balance too: `collateralBalance` counts
+  // only cash (USDC.e + pUSD), not open positions, so two accounts reading the
+  // same cash — most commonly both zero — are genuinely ambiguous (the
+  // unchecked one could hold positions we can't see). Any unreadable balance is
+  // likewise unrankable. Fail closed rather than guess.
   if (unchecked.length > 0) {
     const uncheckedBalances = await Promise.all(
       unchecked.map((c) => collateralBalance(c.address, apiKey)),
     );
     for (const ub of uncheckedBalances) {
-      if (ub === null || ub > bal[chosenIdx]) return UNAVAILABLE;
+      if (ub === null || ub >= bal[chosenIdx]) return UNAVAILABLE;
     }
   }
 

@@ -337,6 +337,27 @@ export type PlaceMarketOrderInput = {
   price?: number;
 };
 
+/**
+ * Classify a Fill-and-Kill order response by how much it matched, using ONLY
+ * the fact we can read without knowing the field's unit: whether it's zero.
+ *
+ * `OrderResponse.makingAmount` is an untyped string with no documented unit
+ * (decimal shares vs 6-decimal base units), so we deliberately do NOT scale it
+ * to compute a fill fraction — that would be a guess against real positions.
+ * But zero is zero in any unit, so a `makingAmount` that parses to exactly 0
+ * reliably means nothing matched. Everything else ("something matched" or
+ * "couldn't read the amount") is `placed`: the caller must then treat full-vs-
+ * partial as unknown and defer to the refreshed portfolio, never asserting a
+ * closed size from the response.
+ */
+export function classifyFakFill(resp: unknown): "nofill" | "placed" {
+  const raw = (resp as { makingAmount?: unknown } | null | undefined)
+    ?.makingAmount;
+  if (typeof raw !== "string" && typeof raw !== "number") return "placed";
+  const n = Number(raw);
+  return Number.isFinite(n) && n === 0 ? "nofill" : "placed";
+}
+
 /** Submit a Fill-and-Kill market order: take whatever the book offers up to
  *  `amount`, cancel the rest. Builder-code-attributed like limit orders. */
 export async function placeMarketOrder({

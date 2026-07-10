@@ -16,7 +16,7 @@ import { useClobSession } from "@/lib/useClobSession";
 import { useMarketLookup } from "@/lib/useMarketLookup";
 import { useUserPositions, type Position } from "@/lib/useUserPositions";
 import { openDepositDialog } from "@/lib/depositDialog";
-import { placeMarketOrder, Side } from "@/lib/polymarket";
+import { classifyFakFill, placeMarketOrder, Side } from "@/lib/polymarket";
 import { classifyProxy } from "@/lib/polymarketDerive";
 import { redeemGasless } from "@/lib/redeem";
 import { cn } from "@/lib/cn";
@@ -209,10 +209,11 @@ export function PortfolioView() {
   // surface that as a toast error). Builder code rides on every order via
   // placeMarketOrder.
   //
-  // Returns what actually happened, not just "order accepted": a FAK fills
-  // whatever depth exists and kills the rest, so acceptance ≠ closed. The bulk
-  // sweep aggregates these so it can't report "Closed all" over residuals.
-  type CloseResult = "full" | "partial" | "unknown" | "failed";
+  // "placed" = order accepted and matched something (fully or partially — we
+  // can't tell from the response, see closeOne body). "nofill" = accepted but
+  // matched nothing. "failed" = rejected/errored. The bulk sweep aggregates
+  // these so it never reports "Closed all" over unverified/partial fills.
+  type CloseResult = "placed" | "nofill" | "failed";
   async function closeOne(p: Position): Promise<CloseResult> {
     if (!session.client) {
       toast.error("Sign in to close positions.");
@@ -253,47 +254,32 @@ export function PortfolioView() {
           (resp as { errorMsg?: string }).errorMsg || "order rejected",
         );
       }
-      // FAK fills whatever depth exists and kills the remainder — read the
-      // matched amount off the response instead of assuming the full size
-      // closed. For our SELL, makingAmount = shares actually sold. Trigger an
-      // immediate positions refetch either way so residuals show promptly.
+      // A FAK fills whatever depth exists and kills the remainder, so it may be
+      // a PARTIAL fill. We CANNOT reliably compute how much filled from the
+      // response: OrderResponse.makingAmount is an untyped string with no
+      // documented unit (decimal shares vs 6-decimal base units — the SDK
+      // exports COLLATERAL_TOKEN_DECIMALS=6), so scaling it against p.size would
+      // be a guess. The authoritative residual is the refreshed portfolio, which
+      // the dispatched refetch below updates. So we DON'T claim a closed amount
+      // here. The one unit-independent fact we can read is zero: makingAmount
+      // parsing to exactly 0 means nothing matched (0 is 0 in any unit).
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("auspex:order-placed"));
       }
-      const makingRaw = (resp as { makingAmount?: unknown })?.makingAmount;
-      const matched =
-        typeof makingRaw === "string" || typeof makingRaw === "number"
-          ? Number(makingRaw)
-          : NaN;
-      // CLOB share amounts round to 2dp; within a cent-of-shares (or 1%) of
-      // the requested size counts as fully closed.
-      const tol = Math.max(0.01, p.size * 0.01);
-      if (!Number.isFinite(matched)) {
-        toast.success(
-          `Close order filled — ${p.outcome.toUpperCase()} · ${p.title.slice(0, 40)}. Updating your position…`,
-          { id: toastId, duration: 5000 },
-        );
-        return "unknown";
-      }
-      if (matched <= 0) {
+      if (classifyFakFill(resp) === "nofill") {
         toast.error(
-          "Nothing filled — no resting liquidity at a fillable price. Try again as the book refreshes.",
+          "Nothing filled — no resting liquidity at a fillable price right now. Your position is unchanged; try again as the book refreshes.",
           { id: toastId, duration: 8000 },
         );
-        return "failed";
+        return "nofill";
       }
-      if (matched < p.size - tol) {
-        toast.warning(
-          `Partially closed — ${matched.toFixed(2)} of ${p.size.toFixed(2)} ${p.outcome.toUpperCase()} filled; the book couldn't absorb the rest. Close again for the remainder.`,
-          { id: toastId, duration: 8000 },
-        );
-        return "partial";
-      }
+      // Order accepted and something matched (or fill size is unreadable). Don't
+      // assert full closure — the refreshed portfolio shows any residual.
       toast.success(
-        `Closed ${p.size.toFixed(2)} ${p.outcome.toUpperCase()} — ${p.title.slice(0, 40)}.`,
+        `Close order placed — ${p.outcome.toUpperCase()} · ${p.title.slice(0, 40)}. Updating your position…`,
         { id: toastId, duration: 5000 },
       );
-      return "full";
+      return "placed";
     } catch (e) {
       const msg = (e as Error).message ?? "unknown error";
       // With the SDK resolving the market's true tick, a price-band rejection
@@ -338,36 +324,35 @@ export function PortfolioView() {
     }
     setCloseAllMode("running");
     setBulkProgress({ done: 0, failed: 0, total: positions.length });
-    // Aggregate the HONEST per-position outcomes: a FAK acceptance can be a
-    // partial fill, so "order went through" must not count as "closed".
-    let full = 0;
-    let partial = 0;
-    let unknown = 0;
+    // Aggregate the HONEST per-position outcomes. We can't verify full-vs-partial
+    // from the order response, so we never assert "closed all" — a placed order
+    // means it matched something; the refreshed portfolio shows any residual.
+    let placed = 0;
+    let nofill = 0;
     let failed = 0;
     for (const p of positions) {
       const res = await closeOne(p);
-      if (res === "full") full += 1;
-      else if (res === "partial") partial += 1;
-      else if (res === "unknown") unknown += 1;
+      if (res === "placed") placed += 1;
+      else if (res === "nofill") nofill += 1;
       else failed += 1;
-      // Progress bar counts orders that landed (incl. partial/unconfirmed).
-      setBulkProgress({
-        done: full + partial + unknown,
-        failed,
-        total: positions.length,
-      });
+      // Progress bar counts orders that landed a fill (excludes no-fill/failed).
+      setBulkProgress({ done: placed, failed: failed + nofill, total: positions.length });
     }
     setCloseAllMode(null);
     setBulkProgress(null);
     const tail = skipped > 0 ? ` (${skipped} resolved — redeem separately)` : "";
-    if (failed === 0 && partial === 0 && unknown === 0) {
-      toast.success(`Closed all ${full} positions.${tail}`, { duration: 5000 });
+    if (failed === 0 && nofill === 0) {
+      // Every order matched something. Still don't claim full closure — partial
+      // fills are indistinguishable here, so point the user at their portfolio.
+      toast.success(
+        `Placed ${placed} close order${placed === 1 ? "" : "s"} — any partial fills will still show a balance in your portfolio.${tail}`,
+        { duration: 6000 },
+      );
     } else {
-      const parts = [`${full} closed`];
-      if (partial > 0) parts.push(`${partial} partial (residual remains)`);
-      if (unknown > 0) parts.push(`${unknown} unconfirmed`);
+      const parts = [`${placed} placed`];
+      if (nofill > 0) parts.push(`${nofill} no liquidity`);
       if (failed > 0) parts.push(`${failed} failed`);
-      toast.warning(`Close sweep finished: ${parts.join(", ")}.${tail}`, {
+      toast.warning(`Close sweep: ${parts.join(", ")}. Check your portfolio for any remaining balance.${tail}`, {
         duration: 8000,
       });
     }
