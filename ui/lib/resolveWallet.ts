@@ -13,6 +13,11 @@ const mainnetClient = createPublicClient({
   transport: http(),
 });
 
+/** Thrown when the proxy lookup couldn't run — the caller should offer a retry
+ *  rather than route to a possibly-wrong address. */
+export const LOOKUP_UNAVAILABLE =
+  "Account lookup is temporarily unavailable — please try again in a moment.";
+
 export type ResolvedWallet = {
   /** The address we'll use to query /trades and /positions. Always a
    *  Polymarket proxy when one could be found, else the input itself. */
@@ -66,6 +71,12 @@ export async function resolveWallet(
     if (!resolvedEoa) return null;
     // Now run EOA → proxy lookup
     const lookup = await findPolymarketProxy(resolvedEoa);
+    // "unavailable" = the lookup couldn't run (rate limit / upstream error), NOT
+    // proof of no account. Surface a retryable error rather than silently
+    // routing to the bare EOA, which would render a real account's page empty.
+    if (lookup.status === "unavailable") {
+      throw new Error(LOOKUP_UNAVAILABLE);
+    }
     if (lookup.proxy) {
       return {
         proxy: lookup.proxy,
@@ -76,7 +87,7 @@ export async function resolveWallet(
       };
     }
     return {
-      proxy: resolvedEoa, // fall back to using the EOA itself (queries may be empty)
+      proxy: resolvedEoa, // genuine "none" — use the EOA itself (queries may be empty)
       eoa: resolvedEoa,
       ens: normalised,
       raw: trimmed,
@@ -88,10 +99,14 @@ export async function resolveWallet(
   if (!isAddress(trimmed)) return null;
   const addr = trimmed.toLowerCase() as `0x${string}`;
 
-  // Try EOA → proxy. If the input IS already a proxy, find-proxy returns null
-  // (since proxies aren't owners of other proxies in the same factory pattern)
-  // — we fall back to using the input directly.
+  // Try EOA → proxy. If the input IS already a proxy, find-proxy returns
+  // status "none" (proxies aren't owners of other proxies in the same factory
+  // pattern) — we fall back to using the input directly. But "unavailable"
+  // (couldn't check) must NOT collapse to that fallback.
   const lookup = await findPolymarketProxy(addr);
+  if (lookup.status === "unavailable") {
+    throw new Error(LOOKUP_UNAVAILABLE);
+  }
   if (lookup.proxy) {
     return {
       proxy: lookup.proxy,

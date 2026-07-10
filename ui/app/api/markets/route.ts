@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getMarkets, getMarketsByIds } from "@/lib/data";
+import { getMarkets, getMarketsByIds, getSnapshotMeta } from "@/lib/data";
 import { getLivePrices } from "@/lib/livePrices";
 import { applyLivePrices } from "@/lib/liveOverlay";
 import type { TableRow } from "@/lib/types";
@@ -25,6 +25,11 @@ const MAX_IDS = 200;
 export async function GET(request: Request) {
   const url = new URL(request.url);
 
+  // Authoritative age of the committed market definitions. Distinct from
+  // `generatedAt` (this response's build time) — a client that adopts
+  // generatedAt as the snapshot age would show "just now" over a 10h-old file.
+  const { snapshotAt } = await getSnapshotMeta();
+
   // By-id mode: return exactly these markets (full rows), regardless of volume
   // rank. Powers Trigger Radar so an alert armed on a low-volume market still
   // gets evaluated. Ranking/limit/family params are ignored in this mode.
@@ -40,6 +45,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         generatedAt: new Date().toISOString(),
+        snapshotAt,
         pricesAt,
         total: markets.length,
         returned: markets.length,
@@ -69,6 +75,7 @@ export async function GET(request: Request) {
   return NextResponse.json(
     {
       generatedAt: new Date().toISOString(),
+      snapshotAt,
       pricesAt,
       total: filtered.length,
       returned: markets.length,

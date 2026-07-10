@@ -35,6 +35,12 @@ OFFSET_CAP = 2_000
 # near windows are narrow; far windows are sparse and can be wide. The final
 # None = open-ended tail (end_date_min only).
 WINDOW_DAYS = [0, 1, 2, 4, 7, 14, 30, 60, 120, 240, 500, 1000, None]
+# Look-back floor for the first window. Events awaiting delayed resolution stay
+# active=true / closed=false after their scheduled end; a -1d floor dropped them
+# from the crawl (and thus from search/alerts). `closed:false` already excludes
+# settled events, so this only widens to the small set of past-due-but-open ones.
+# split-on-cap handles the wider window's density.
+PAST_FLOOR_DAYS = -30
 OUT_PATH = Path(__file__).parent / "data" / "crypto-events.json"
 
 
@@ -86,11 +92,12 @@ def iso(d: datetime) -> str:
 def main() -> None:
     by_id: dict = {}
     now = datetime.now(timezone.utc)
-    # Start one day back so events ending later today are safely included
-    # regardless of gamma's boundary semantics; dedupe absorbs any overlap.
+    # Start PAST_FLOOR_DAYS back so events that ended earlier but are still open
+    # (delayed resolution) are included, not just those ending later today;
+    # dedupe absorbs any overlap.
     bounds: list[datetime | None] = [
         now + timedelta(days=d) if d is not None else None
-        for d in ([-1] + WINDOW_DAYS[1:])
+        for d in ([PAST_FLOOR_DAYS] + WINDOW_DAYS[1:])
     ]
     # Consecutive pairs; the last boundary is None, so the final pair is the
     # open-ended tail (end_date_min only).

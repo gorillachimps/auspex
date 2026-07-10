@@ -125,7 +125,9 @@ export function useFillNotifications() {
 
     async function poll() {
       try {
-        const url = `${HOST}/trades?user=${funder}&limit=25`;
+        // takerOnly defaults to true upstream — pass false so maker-side fills
+        // (a resting order that gets hit) also raise a fill notification.
+        const url = `${HOST}/trades?user=${funder}&limit=25&takerOnly=false`;
         const r = await fetch(url, { cache: "no-store" });
         if (!r.ok) return;
         const data = (await r.json()) as Trade[];

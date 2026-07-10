@@ -17,6 +17,10 @@ const BINANCE_HOSTS = [
 // times a minute per warm instance.
 const TTL_MS = 30_000;
 const FETCH_TIMEOUT_MS = 6_000;
+// Beyond this, a last-known-good price is too old to keep presenting as "live".
+// Past the ceiling we return null so callers fall back to the snapshot's own
+// (freshness-labeled) prices instead of pinning a green "Live" on hours-old spot.
+const STALE_CEILING_MS = 10 * 60_000;
 
 export type LivePrices = {
   prices: Record<string, number>; // "BTCUSDT" -> 62185.1
@@ -69,7 +73,10 @@ export async function getLivePrices(): Promise<LivePrices | null> {
   inFlight = fetchAllTickers()
     .then((fresh) => {
       if (fresh) cache = fresh;
-      return cache; // last-known-good on failure
+      // Serve last-known-good on a failed refresh, but NOT past the staleness
+      // ceiling — an old spot must not keep reading as "live" indefinitely.
+      if (cache && Date.now() - cache.fetchedAt <= STALE_CEILING_MS) return cache;
+      return null;
     })
     .finally(() => {
       inFlight = null;

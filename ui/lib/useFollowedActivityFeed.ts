@@ -60,7 +60,8 @@ export function useFollowedActivityFeed(
         const results = await Promise.allSettled(
           list.map(async (addr) => {
             const r = await fetch(
-              `${HOST}/trades?user=${addr}&limit=${PER_WALLET_LIMIT}`,
+              // takerOnly defaults to true upstream — false to include maker fills.
+              `${HOST}/trades?user=${addr}&limit=${PER_WALLET_LIMIT}&takerOnly=false`,
               { cache: "no-store" },
             );
             if (!r.ok) throw new Error(`HTTP ${r.status} for ${addr}`);

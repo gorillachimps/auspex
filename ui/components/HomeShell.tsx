@@ -55,11 +55,14 @@ export function HomeShell({
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: {
           generatedAt: string;
+          snapshotAt?: string;
           markets: TableRow[];
         } = await res.json();
         if (cancelled || !Array.isArray(data.markets)) return;
         setRows(data.markets);
-        setSnapshotAt(data.generatedAt);
+        // Use the authoritative source-snapshot time, NOT this response's build
+        // time (generatedAt) — otherwise a 10h-old market list reads "just now".
+        if (data.snapshotAt) setSnapshotAt(data.snapshotAt);
         setLiveCount(
           data.markets.filter((r) => r.liveState === "live").length,
         );

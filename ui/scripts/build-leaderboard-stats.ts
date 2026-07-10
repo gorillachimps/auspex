@@ -62,7 +62,8 @@ async function fetchTrades(wallet: string): Promise<Trade[]> {
   const acc: Trade[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {
     const json = await getJson(
-      `${DATA}/trades?user=${wallet}&limit=${PAGE_LIMIT}&offset=${page * PAGE_LIMIT}`,
+      // takerOnly defaults to true upstream — false so maker fills count too.
+      `${DATA}/trades?user=${wallet}&limit=${PAGE_LIMIT}&offset=${page * PAGE_LIMIT}&takerOnly=false`,
     );
     if (!Array.isArray(json) || json.length === 0) break;
     for (const t of json) {

@@ -23,6 +23,19 @@ export type Notification = {
   unread: boolean;
 };
 
+/**
+ * Notifications live in localStorage, which is attacker-influenceable on shared
+ * machines / via XSS, yet `url` is rendered as a trusted `<a href>`. Every
+ * legitimate notification links to a same-origin deep link ("/portfolio",
+ * "/markets/..."), so accept ONLY root-relative paths. This rejects external
+ * URLs, protocol-relative "//evil.com", and "javascript:"/"data:" schemes.
+ */
+function safeNotificationUrl(u: unknown): string | undefined {
+  if (typeof u !== "string") return undefined;
+  if (!u.startsWith("/") || u.startsWith("//")) return undefined;
+  return u;
+}
+
 function readAll(): Notification[] {
   if (typeof window === "undefined") return [];
   try {
@@ -30,15 +43,17 @@ function readAll(): Notification[] {
     if (!raw) return [];
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
-    return arr.filter(
-      (n): n is Notification =>
-        n &&
-        typeof n === "object" &&
-        typeof n.id === "string" &&
-        typeof n.kind === "string" &&
-        typeof n.title === "string" &&
-        typeof n.ts === "number",
-    );
+    return arr
+      .filter(
+        (n): n is Notification =>
+          n &&
+          typeof n === "object" &&
+          typeof n.id === "string" &&
+          typeof n.kind === "string" &&
+          typeof n.title === "string" &&
+          typeof n.ts === "number",
+      )
+      .map((n) => ({ ...n, url: safeNotificationUrl(n.url) }));
   } catch {
     return [];
   }

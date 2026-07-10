@@ -46,7 +46,10 @@ export function ShareButtons({ text, url, slug }: Props) {
     if (!slug) return;
     // 320×180 = 16:9 at "card" size — the canonical embed dimension that
     // drops cleanly into Twitter/X cards and Substack post bodies.
-    const embedSrc = `https://auspex.to/embed/${slug}`;
+    // Encode the slug into the URL path — for a normal [a-z0-9-] slug this is a
+    // no-op, but it neutralizes any HTML metachars (", <, >) so a hostile slug
+    // can't break out of the iframe src attribute in the copied snippet.
+    const embedSrc = `https://auspex.to/embed/${encodeURIComponent(slug)}`;
     const snippet = `<iframe src="${embedSrc}" width="320" height="180" frameborder="0" style="border-radius:8px;" title="Live odds on Auspex"></iframe>`;
     try {
       await navigator.clipboard.writeText(snippet);

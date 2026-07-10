@@ -17,7 +17,10 @@ permissions:
   contents: write
 
 concurrency:
-  group: data-rebuild
+  # Shared with data-refresh + leaderboard-stats so the three main-writing
+  # workflows serialize instead of racing on `git push` (non-fast-forward
+  # would silently drop one side's changes).
+  group: auspex-main-writer
   cancel-in-progress: false
 
 jobs:

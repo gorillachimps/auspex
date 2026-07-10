@@ -92,4 +92,28 @@ describe("estimateMarketFill", () => {
     // avg 0.55 vs mid 0.50 → +10pp
     expect(f.slippagePct).toBeCloseTo(10, 4);
   });
+
+  it("SELL: below-mid fill is positive (unfavorable) slippage", () => {
+    const f = estimateMarketFill({
+      side: "sell",
+      amount: 10,
+      asks: [],
+      bids: [{ price: "0.40", size: "100" }],
+      mid: 0.5,
+    });
+    // Selling at 0.40 vs mid 0.50 is 20% unfavorable → +20, not -20.
+    expect(f.slippagePct).toBeCloseTo(20, 4);
+  });
+
+  it("SELL: above-mid fill is negative (favorable) slippage", () => {
+    const f = estimateMarketFill({
+      side: "sell",
+      amount: 10,
+      asks: [],
+      bids: [{ price: "0.55", size: "100" }],
+      mid: 0.5,
+    });
+    // Selling above mid is favorable → negative slippage.
+    expect(f.slippagePct).toBeCloseTo(-10, 4);
+  });
 });

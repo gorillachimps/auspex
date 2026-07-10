@@ -66,6 +66,10 @@ function sortRows(rows: TableRow[], sorting: SortingState): TableRow[] {
         return r.oneDayChange == null ? null : Math.abs(r.oneDayChange);
       case "volume24h":
         return r.volume24h;
+      case "depth":
+        // "Deepest books" — depth is liquidity near the current price. Kept in
+        // sync with the desktop table's depth sort (both key off r.liquidity).
+        return r.liquidity;
       default:
         return null;
     }

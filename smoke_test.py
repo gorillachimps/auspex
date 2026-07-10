@@ -77,6 +77,22 @@ def pick_test_market() -> dict:
     raise RuntimeError("no suitable market found")
 
 
+def best_ask(token_id: str) -> float | None:
+    """Lowest resting ask via the public CLOB /book endpoint (no auth needed).
+    min() over the ask prices is order-agnostic, so we don't depend on the
+    book's array convention."""
+    try:
+        r = requests.get(
+            f"{CLOB_HOST}/book", params={"token_id": token_id}, timeout=15
+        )
+        r.raise_for_status()
+        asks = r.json().get("asks") or []
+        prices = [float(a["price"]) for a in asks if a.get("price")]
+        return min(prices) if prices else None
+    except Exception:
+        return None
+
+
 def dump(label: str, value) -> None:
     print(f"  {label}: {json.dumps(value, indent=2, default=str)}")
 
@@ -114,9 +130,22 @@ def main() -> int:
     neg_risk = client.get_neg_risk(market["token_id"])
     print(f"Tick:    {tick}   negRisk: {neg_risk}\n")
 
-    # $0.01 × 5 = $0.05 commitment, far enough below mid that it won't fill.
+    # $0.01 × 5 = $0.05 commitment, meant to rest far below mid without filling.
     test_price = 0.01
     test_size = 5
+
+    # Prove it's actually off-book before sending real money: if the best ask is
+    # at/below our price, a BUY would cross and fill. Abort rather than trade.
+    ask = best_ask(market["token_id"])
+    if ask is not None and ask <= test_price:
+        print(
+            f"Best ask ${ask} is at/below the test price ${test_price} — a BUY "
+            "would cross and fill. Aborting to avoid a real trade; try another "
+            "market or a lower price/tick."
+        )
+        return 1
+    if ask is None:
+        print("Warning: couldn't read the book to confirm the order is off-book.")
 
     print(f"[1/3] place BUY {test_size}@${test_price} builder_code={BUILDER_CODE[:10]}...")
     resp = client.create_and_post_order(
@@ -136,7 +165,7 @@ def main() -> int:
         print("\nOrder rejected. Common causes:")
         print("  - wallet has 0 pUSD balance (deposit at polymarket.com)")
         print("  - builder_code not registered for this address")
-        print("  - signature_type mismatch (try POLY_SIG_TYPE=1 for Safe, 2 for Magic)")
+        print("  - signature_type mismatch (try POLY_SIG_TYPE=2 for Safe, 1 for Magic)")
         return 1
 
     order_id = resp.get("orderID") or resp.get("orderId")
@@ -146,19 +175,54 @@ def main() -> int:
 
     time.sleep(1)
 
-    print(f"\n[2/3] fetch order {order_id}")
-    dump("detail", client.get_order(order_id))
+    # Fetch-and-assert inside try/finally so the resting order is ALWAYS
+    # cancelled — even if get_order or the builder assertion throws/returns.
+    result = 0
+    try:
+        print(f"\n[2/3] fetch order {order_id}")
+        detail = client.get_order(order_id)
+        dump("detail", detail)
 
-    print(f"\n[3/3] cancel")
-    dump("response", client.cancel_order(OrderPayload(orderID=order_id)))
+        # The whole point of the smoke test: assert the builder code actually
+        # round-tripped, don't just print it and exit 0.
+        got = None
+        if isinstance(detail, dict):
+            got = (
+                detail.get("builder")
+                or detail.get("builderCode")
+                or detail.get("builder_code")
+            )
+        if got is None:
+            print(
+                "\nFAIL: order detail has no builder field — attribution is "
+                "unverifiable (SDK may have dropped the builder code)."
+            )
+            result = 1
+        elif str(got).lower() != BUILDER_CODE.lower():
+            print(
+                f"\nFAIL: builder mismatch — sent {BUILDER_CODE}, got {got}."
+            )
+            result = 1
+        else:
+            print(f"  builder OK — {str(got)[:10]}... matches the configured code")
+    finally:
+        print(f"\n[3/3] cancel")
+        try:
+            dump("response", client.cancel_order(OrderPayload(orderID=order_id)))
+        except Exception as e:  # noqa: BLE001 — best-effort cleanup
+            print(
+                f"  WARNING: cancel raised {e!r} — verify no open order remains "
+                "at polymarket.com."
+            )
+            result = 1
 
-    print(
-        "\nInspect the order detail above — the `builder` field should equal "
-        f"your code ({BUILDER_CODE[:10]}...).\n"
-        "For filled-trade attribution use:\n"
-        "  client.get_builder_trades(BuilderTradeParams(builder_code=BUILDER_CODE))"
-    )
-    return 0
+    if result == 0:
+        print(
+            "\nBuilder attribution verified.\n"
+            "For filled-trade attribution use:\n"
+            "  client.get_builder_trades(BuilderTradeParams(builder_code=BUILDER_CODE))"
+        )
+    return result
 
 
 if __name__ == "__main__":

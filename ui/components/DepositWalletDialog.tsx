@@ -80,6 +80,10 @@ export function DepositWalletDialog({
   /** USDC.e balance of the detected/entered account (null = unknown/loading),
    *  so the found view can show it and nudge funding when it's empty. */
   const [funderBalance, setFunderBalance] = useState<number | null>(null);
+  /** On-chain deployment state of the entered account. null = unknown/loading,
+   *  false = derivable but NOT deployed. Funding is gated on this so we never
+   *  offer to send USDC to an undeployed proxy (funds would be stranded). */
+  const [funderDeployed, setFunderDeployed] = useState<boolean | null>(null);
   const detectedFor = useRef<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -107,6 +111,12 @@ export function DepositWalletDialog({
   // account — drives a reactive warning and blocks Start trading.
   const notOwnedPaste =
     looksValid && !sameAsWallet && !autoDetected && ownedType == null;
+  // Only offer funding once the account is positively confirmed deployed on
+  // chain. Auto-detected accounts were already deployment-checked by find-proxy
+  // (server-side getCode) so they're trusted immediately; a pasted address must
+  // pass the client-side getCode. This blocks funding a derivable-but-undeployed
+  // CREATE2 candidate, where the USDC would be stranded.
+  const fundingAllowed = autoDetected || funderDeployed === true;
 
   useEffect(() => {
     if (!open) return;
@@ -195,22 +205,31 @@ export function DepositWalletDialog({
   useEffect(() => {
     if (!open || !isValid || !publicClient) {
       setFunderBalance(null);
+      setFunderDeployed(null);
       return;
     }
     let cancelled = false;
     setFunderBalance(null);
-    publicClient
-      .readContract({
+    setFunderDeployed(null);
+    Promise.all([
+      publicClient.readContract({
         address: USDC_E,
         abi: erc20Abi,
         functionName: "balanceOf",
         args: [trimmed as `0x${string}`],
-      })
-      .then((raw) => {
-        if (!cancelled) setFunderBalance(Number(raw) / 1e6);
+      }),
+      publicClient.getCode({ address: trimmed as `0x${string}` }),
+    ])
+      .then(([raw, code]) => {
+        if (cancelled) return;
+        setFunderBalance(Number(raw) / 1e6);
+        setFunderDeployed(!!code && code !== "0x");
       })
       .catch(() => {
-        if (!cancelled) setFunderBalance(null);
+        if (!cancelled) {
+          setFunderBalance(null);
+          setFunderDeployed(null);
+        }
       });
     return () => {
       cancelled = true;
@@ -262,36 +281,47 @@ export function DepositWalletDialog({
       return;
     }
 
-    // Catch the two silent-breakage failure modes before they become "balance
-    // shows 0 and the user has no idea why": (1) pasted an EOA not a proxy
-    // (no bytecode); (2) a real proxy that the connected wallet doesn't own.
+    // Verify before saving. Fail CLOSED: an address we can't confirm as this
+    // wallet's own DEPLOYED proxy must not be saved (and then funded).
     setVerifying(true);
     setError(null);
     try {
-      if (publicClient) {
-        const code = await publicClient.getCode({
-          address: trimmed as `0x${string}`,
-        });
-        const hasBytecode = !!code && code !== "0x";
-        if (!hasBytecode) {
-          setError(
-            "That's a regular wallet, not your Polymarket account. Your account is a smart contract Polymarket creates for you — copy that address from polymarket.com → profile → builder settings.",
-          );
-          return;
-        }
-      }
-      // Hard ownership guard (defense in depth; the button is already gated on
-      // ownershipVerified). The funder must be one of THIS wallet's CREATE2
-      // accounts — closes the phished/wrong-address → bridge-to-attacker leg the
-      // old reverse-owner scan silently missed for Safe accounts.
+      // (1) Ownership guard (pure, no network). The funder must be one of THIS
+      // wallet's CREATE2 accounts — closes the phished/wrong-address →
+      // bridge-to-attacker leg the old reverse-owner scan missed for Safes.
       if (!autoDetected && classifyProxy(eoa, trimmed as `0x${string}`) == null) {
         setError(
           "This isn't an account your connected wallet controls. Paste the Polymarket account this wallet owns, or create a new one.",
         );
         return;
       }
-    } catch {
-      // Infra noise (flaky RPC / API) — let the user proceed rather than block.
+      // (2) Deployment confirmation. A derivable-but-UNDEPLOYED candidate would
+      // strand any funds sent to it (Polymarket may never deploy that exact
+      // proxy, and Auspex must never call the factory). If the check can't run,
+      // do NOT proceed — an unverifiable address must never read as "deployed"
+      // (invariant #4). This replaces the old fail-OPEN catch.
+      if (!publicClient) {
+        setError(
+          "Couldn't verify your account on-chain just now — please try again in a moment.",
+        );
+        return;
+      }
+      let code: `0x${string}` | undefined;
+      try {
+        code = await publicClient.getCode({ address: trimmed as `0x${string}` });
+      } catch {
+        setError(
+          "Couldn't verify your account on-chain just now — please try again in a moment.",
+        );
+        return;
+      }
+      const hasBytecode = !!code && code !== "0x";
+      if (!hasBytecode) {
+        setError(
+          "That's a regular wallet, not your Polymarket account. Your account is a smart contract Polymarket creates for you — copy that address from polymarket.com → profile → builder settings.",
+        );
+        return;
+      }
     } finally {
       setVerifying(false);
     }
@@ -435,8 +465,16 @@ export function DepositWalletDialog({
             </div>
 
             {/* Balance + funding nudge — show the account's USDC so there's no
-                dead-end between "found your account" and being able to bet. */}
-            {funderBalance != null && funderBalance >= 1 ? (
+                dead-end between "found your account" and being able to bet.
+                Gated on confirmed on-chain deployment (fundingAllowed) so we
+                never offer to send USDC to an undeployed proxy. */}
+            {!fundingAllowed ? (
+              <div className="mt-3 rounded-md border border-amber-400/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200">
+                {funderDeployed === false
+                  ? "This account isn’t deployed on-chain yet — finish creating it on Polymarket before adding funds. Sending USDC to an undeployed account would strand it."
+                  : "Confirming your account on-chain…"}
+              </div>
+            ) : funderBalance != null && funderBalance >= 1 ? (
               <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-emerald-400/30 bg-emerald-500/5 px-3 py-2 text-[11px]">
                 <span className="text-emerald-300">
                   Funded · ${funderBalance.toFixed(2)} USDC — ready to bet

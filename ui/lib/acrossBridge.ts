@@ -135,13 +135,19 @@ export async function executeBridge(params: {
   // signature. Matters most because we approve max-uint256 (infiniteApproval).
   const { originChainId, spokePoolAddress } = params.quote.deposit;
   const audited = SPOKE_POOL_BY_CHAIN[originChainId];
+  // Fail CLOSED: positively confirm the SDK's spoke pool equals our independently
+  // -audited address BEFORE approving max-uint256. A missing audited entry (an
+  // unrecognized origin chain), a missing spokePoolAddress, OR a mismatch all
+  // abort — never fall through to signing on an unverified spender.
   if (
-    audited &&
-    spokePoolAddress &&
+    !audited ||
+    !spokePoolAddress ||
     audited.toLowerCase() !== spokePoolAddress.toLowerCase()
   ) {
     throw new Error(
-      `Bridge aborted: the resolved spoke pool (${spokePoolAddress}) for chain ${originChainId} does not match the audited address (${audited}). Not requesting approval.`,
+      `Bridge aborted: could not confirm the spoke pool for chain ${originChainId} ` +
+        `matches the audited address (resolved=${spokePoolAddress ?? "none"}, ` +
+        `audited=${audited ?? "none"}). Not requesting approval.`,
     );
   }
   return client.executeQuote({

@@ -35,7 +35,9 @@ export function useWalletTrades(
       const accumulator: Trade[] = [];
       for (let page = 0; page < MAX_PAGES; page++) {
         const offset = page * PAGE_LIMIT;
-        const url = `${HOST}/trades?user=${proxy}&limit=${PAGE_LIMIT}&offset=${offset}`;
+        // takerOnly defaults to true upstream; false so maker fills count in
+        // FIFO cost basis (otherwise a later SELL looks unmatched → $0 P&L).
+        const url = `${HOST}/trades?user=${proxy}&limit=${PAGE_LIMIT}&offset=${offset}&takerOnly=false`;
         const r = await fetch(url, { cache: "no-store" });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const json: unknown = await r.json();

@@ -14,7 +14,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: data-refresh
+  # Shared across all three main-writing workflows (refresh / rebuild /
+  # leaderboard-stats) so they serialize instead of racing on `git push` — two
+  # concurrent runs from the same base commit produce a non-fast-forward that
+  # silently drops one side's changes until the next run (up to 6h).
+  group: auspex-main-writer
   cancel-in-progress: false
 
 jobs:

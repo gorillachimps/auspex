@@ -80,9 +80,12 @@ export function estimateMarketFill({
 
   const fullyFillable = remaining <= 1e-9;
   const avgPrice = sharesAccum > 0 ? usdcAccum / sharesAccum : null;
+  // Signed so that positive === unfavorable on BOTH sides (see FillEstimate
+  // doc). BUY is unfavorable when the fill lands ABOVE mid; SELL is unfavorable
+  // when it lands BELOW mid — so the SELL numerator flips.
   const slippagePct =
     avgPrice != null && mid != null && mid > 0
-      ? ((avgPrice - mid) / mid) * 100
+      ? (side === "buy" ? (avgPrice - mid) : (mid - avgPrice)) / mid * 100
       : null;
   return {
     avgPrice,

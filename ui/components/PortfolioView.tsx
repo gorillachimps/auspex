@@ -248,13 +248,16 @@ export function PortfolioView() {
           (resp as { errorMsg?: string }).errorMsg || "order rejected",
         );
       }
-      toast.success(
-        `Closed ${p.size.toFixed(2)} ${p.outcome.toUpperCase()} ≈ ${fmtUSD(p.currentValue)}`,
-        { id: toastId, duration: 5000 },
-      );
+      // FAK fills whatever depth exists and kills the remainder, so this may be
+      // a PARTIAL fill — don't claim the full size closed. Trigger an immediate
+      // positions refetch and let the refreshed portfolio show any residual.
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("auspex:order-placed"));
       }
+      toast.success(
+        `Close order filled — ${p.outcome.toUpperCase()} · ${p.title.slice(0, 40)}. Updating your position…`,
+        { id: toastId, duration: 5000 },
+      );
       return true;
     } catch (e) {
       const msg = (e as Error).message ?? "unknown error";

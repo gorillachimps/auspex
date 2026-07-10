@@ -22,15 +22,30 @@ type Group = { token: string; outcomeIndex: number; holders: Holder[] };
  * which breaks JSON.parse — so we regex-extract the conditionId from the raw
  * text rather than parsing the whole payload.
  */
-async function resolveConditionId(slug: string): Promise<string | null> {
-  const r = await fetch(`${GAMMA}/markets?slug=${encodeURIComponent(slug)}`, {
-    cache: "no-store",
-  });
-  if (!r.ok) return null;
-  const text = await r.text();
-  const m = text.match(/"conditionId"\s*:\s*"(0x[0-9a-fA-F]{64})"/);
-  return m ? m[1] : null;
+// `error` distinguishes an upstream failure (429/5xx/network) from a genuine
+// "no such market" — the former must NOT be cached as an empty result.
+async function resolveConditionId(
+  slug: string,
+): Promise<{ id: string | null; error: boolean }> {
+  try {
+    const r = await fetch(`${GAMMA}/markets?slug=${encodeURIComponent(slug)}`, {
+      cache: "no-store",
+    });
+    if (!r.ok) return { id: null, error: true };
+    const text = await r.text();
+    const m = text.match(/"conditionId"\s*:\s*"(0x[0-9a-fA-F]{64})"/);
+    return { id: m ? m[1] : null, error: false };
+  } catch {
+    return { id: null, error: true };
+  }
 }
+
+// Upstream failures return this — a real error status with no public cache, so
+// a transient Gamma/data-api hiccup can't be cached as "no holders" for minutes.
+const UPSTREAM_UNAVAILABLE = {
+  body: { error: "holders upstream unavailable" },
+  init: { status: 502, headers: { "Cache-Control": "no-store" } },
+} as const;
 
 function cleanGroups(value: unknown): Group[] {
   if (!Array.isArray(value)) return [];
@@ -70,7 +85,11 @@ export async function GET(request: Request) {
   if (marketParam && COND_RE.test(marketParam)) {
     conditionId = marketParam;
   } else if (slug && SLUG_RE.test(slug)) {
-    conditionId = await resolveConditionId(slug);
+    const resolved = await resolveConditionId(slug);
+    if (resolved.error) {
+      return NextResponse.json(UPSTREAM_UNAVAILABLE.body, UPSTREAM_UNAVAILABLE.init);
+    }
+    conditionId = resolved.id;
   } else {
     return NextResponse.json(
       { error: "expected ?slug=<market-slug> or ?market=<conditionId>" },
@@ -79,6 +98,7 @@ export async function GET(request: Request) {
   }
 
   if (!conditionId) {
+    // Genuine "no such market" (upstream answered, no match) — safe to cache.
     return NextResponse.json(
       { conditionId: null, groups: [] },
       { headers: { "Cache-Control": "public, s-maxage=120, stale-while-revalidate=300" } },
@@ -91,9 +111,13 @@ export async function GET(request: Request) {
       `${DATA}/holders?market=${conditionId}&limit=${HOLDERS_LIMIT}`,
       { cache: "no-store" },
     );
-    if (hr.ok) groups = cleanGroups(JSON.parse(await hr.text()));
+    if (!hr.ok) {
+      return NextResponse.json(UPSTREAM_UNAVAILABLE.body, UPSTREAM_UNAVAILABLE.init);
+    }
+    groups = cleanGroups(JSON.parse(await hr.text()));
   } catch {
-    // upstream hiccup → empty result; the client shows an empty state
+    // Network error / malformed JSON → surface as unavailable, don't cache empty.
+    return NextResponse.json(UPSTREAM_UNAVAILABLE.body, UPSTREAM_UNAVAILABLE.init);
   }
 
   return NextResponse.json(

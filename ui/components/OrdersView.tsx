@@ -82,7 +82,15 @@ export function OrdersView() {
     setCancelling((prev) => new Set(prev).add(id));
     const toastId = toast.loading(`Cancelling order ${id.slice(0, 10)}…`);
     try {
-      await session.client.cancelOrder({ orderID: id });
+      // cancelOrder resolves even on a partial/failed cancel — the SDK does NOT
+      // throwIfError here, so a 200 can carry {canceled, not_canceled}. A reason
+      // in not_canceled means the order is STILL LIVE; don't remove it or claim
+      // success (it would silently reappear and could later fill).
+      const res = (await session.client.cancelOrder({ orderID: id })) as
+        | { not_canceled?: Record<string, string> }
+        | undefined;
+      const reason = res?.not_canceled?.[id];
+      if (reason) throw new Error(reason);
       toast.success("Order cancelled", { id: toastId, duration: 4000 });
       setOrders((prev) => prev?.filter((o) => o.id !== id) ?? null);
     } catch (e) {
@@ -112,12 +120,31 @@ export function OrdersView() {
     setCancelling(new Set(ids));
     const toastId = toast.loading(`Cancelling ${ids.length} orders…`);
     try {
-      await session.client.cancelOrders(ids);
-      toast.success(`Cancelled ${ids.length} orders`, {
-        id: toastId,
-        duration: 4000,
-      });
-      setOrders([]);
+      // Same as cancelOne: cancelOrders can return {canceled, not_canceled}
+      // without throwing. Keep any orders that did NOT cancel visible instead of
+      // blanking the whole list — they're still live.
+      const res = (await session.client.cancelOrders(ids)) as
+        | { not_canceled?: Record<string, string> }
+        | undefined;
+      const notCanceled =
+        res?.not_canceled && typeof res.not_canceled === "object"
+          ? res.not_canceled
+          : {};
+      const failedIds = Object.keys(notCanceled);
+      if (failedIds.length > 0) {
+        const failedSet = new Set(failedIds);
+        setOrders((prev) => prev?.filter((o) => failedSet.has(o.id)) ?? null);
+        toast.warning(
+          `Cancelled ${ids.length - failedIds.length} of ${ids.length} — ${failedIds.length} still open.`,
+          { id: toastId, duration: 8000 },
+        );
+      } else {
+        toast.success(`Cancelled ${ids.length} orders`, {
+          id: toastId,
+          duration: 4000,
+        });
+        setOrders([]);
+      }
     } catch (e) {
       toast.error(`Cancel-all failed: ${(e as Error).message}`, {
         id: toastId,

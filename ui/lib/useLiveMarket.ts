@@ -126,12 +126,17 @@ function bookFromBidsAsks(
  */
 export function useLiveBook(tokenId: string | null | undefined): LiveBook | null {
   const [book, setBook] = useState<LiveBook | null>(null);
+  // Deltas that arrive on the WS BEFORE the HTTP snapshot lands. Without this,
+  // an early price_change is dropped (book is still null) and then the delayed
+  // snapshot installs the OLDER book, leaving a stale level until it next moves.
+  const pendingChanges = useRef<RawChange[]>([]);
   useEffect(() => {
     if (!tokenId) {
       setBook(null);
       return;
     }
     setBook(null);
+    pendingChanges.current = [];
     let cancelled = false;
 
     // 1. HTTP snapshot for instant render. Survives WS server quirks.
@@ -141,12 +146,22 @@ export function useLiveBook(tokenId: string | null | undefined): LiveBook | null
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data: { bids?: Level[]; asks?: Level[]; timestamp?: string }) => {
         if (cancelled) return;
-        // Only seed if we haven't already got a fresher book from the WS.
-        setBook((prev) =>
-          prev != null
-            ? prev
-            : bookFromBidsAsks(data.bids ?? [], data.asks ?? [], data.timestamp, 0),
-        );
+        // Only seed if we haven't already got a fresher book from the WS. Replay
+        // any deltas buffered while this fetch was in flight so none are lost.
+        setBook((prev) => {
+          if (prev != null) return prev;
+          let seeded = bookFromBidsAsks(
+            data.bids ?? [],
+            data.asks ?? [],
+            data.timestamp,
+            0,
+          );
+          if (pendingChanges.current.length > 0) {
+            seeded = applyPriceChanges(seeded, pendingChanges.current);
+            pendingChanges.current = [];
+          }
+          return seeded;
+        });
       })
       .catch(() => {
         // Network glitch — the WS book event (if/when it comes) will fill in.
@@ -156,6 +171,8 @@ export function useLiveBook(tokenId: string | null | undefined): LiveBook | null
     const unsub = polymarketMarketWs.subscribe([tokenId], {
       onBook: (e) => {
         if (cancelled) return;
+        // A full snapshot supersedes anything we buffered.
+        pendingChanges.current = [];
         setBook(
           bookFromBidsAsks(
             (e.bids as Level[] | undefined) ?? [],
@@ -168,7 +185,14 @@ export function useLiveBook(tokenId: string | null | undefined): LiveBook | null
       onPriceChange: (e) => {
         if (cancelled) return;
         const changes = (e.changes as RawChange[] | undefined) ?? [];
-        setBook((prev) => (prev ? applyPriceChanges(prev, changes) : prev));
+        setBook((prev) => {
+          if (!prev) {
+            // No book yet (HTTP seed still in flight) — buffer, don't drop.
+            pendingChanges.current.push(...changes);
+            return prev;
+          }
+          return applyPriceChanges(prev, changes);
+        });
       },
     });
 

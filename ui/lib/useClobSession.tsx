@@ -66,6 +66,22 @@ const DISABLED: ClobSession = {
 
 const ClobSessionContext = createContext<ClobSession>(DISABLED);
 
+/**
+ * Read the cached funder, but ONLY trust it if it is still CREATE2-derivable
+ * from the connected EOA. localStorage is attacker-influenceable (shared
+ * machine / XSS) and the funder flows straight into bridge/onramp recipient
+ * fields — so a poisoned, non-derivable entry must be dropped here, before it
+ * can ever be funded. This is the SEC-1 CREATE2 guard applied to the cache, not
+ * just the manual-paste path. Legit funders always pass (find-proxy only ever
+ * returns deriveCandidates addresses, which classifyProxy matches).
+ */
+function readTrustedFunder(eoa: `0x${string}`): `0x${string}` | null {
+  const cached = readFunderAddress(eoa);
+  if (!cached) return null;
+  if (classifyProxy(eoa, cached) == null) return null;
+  return cached;
+}
+
 /** Build the session state — called exactly once by ClobSessionProvider. */
 function useClobSessionState(): ClobSession {
   const privy = usePrivy();
@@ -102,7 +118,7 @@ function useClobSessionState(): ClobSession {
       setFunder(null);
       return;
     }
-    setFunder(readFunderAddress(eoa));
+    setFunder(readTrustedFunder(eoa));
   }, [eoa, refreshTick]);
 
   // Auto-link: when a wallet connects and has no cached funder, derive their
@@ -152,7 +168,7 @@ function useClobSessionState(): ClobSession {
   useEffect(() => {
     if (!eoa) return;
     function reread() {
-      setFunder(readFunderAddress(eoa!));
+      setFunder(readTrustedFunder(eoa!));
     }
     function onStorage(e: StorageEvent) {
       // Storage key prefix is frozen at the pre-rebrand value so existing

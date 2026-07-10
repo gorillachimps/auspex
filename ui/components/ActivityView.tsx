@@ -90,7 +90,8 @@ export function ActivityView() {
       }
       setState((s) => ({ ...s, loading: true, error: null }));
       try {
-        const url = `${HOST}/trades?user=${funder}&limit=200`;
+        // takerOnly defaults to true upstream — false so maker fills also appear.
+        const url = `${HOST}/trades?user=${funder}&limit=200&takerOnly=false`;
         const r = await fetch(url, { cache: "no-store" });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const data = await r.json();

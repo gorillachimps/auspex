@@ -26,6 +26,13 @@ import { useUserPositions } from "./useUserPositions";
 
 const SEEN_KEY = "polycrypto.redeemable-seen.v1";
 
+/** Scope the seen-marker (and the notification id) to funder + condition so two
+ *  funders sharing one browser can't cross-suppress each other's claim alerts
+ *  or collide on a single inbox id. */
+function seenKey(funder: string, conditionId: string): string {
+  return `${funder.toLowerCase()}:${conditionId}`;
+}
+
 function readSeen(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
@@ -65,7 +72,7 @@ export function useSettlementNotifications() {
       // don't notify. Subsequent polls for the same funder go through
       // the diff path below.
       for (const p of positions) {
-        if (p.redeemable) seen.add(p.conditionId);
+        if (p.redeemable) seen.add(seenKey(funder, p.conditionId));
       }
       writeSeen(seen);
       bootstrappedFor.current = funder;
@@ -76,11 +83,12 @@ export function useSettlementNotifications() {
     let changed = false;
     for (const p of positions) {
       if (!p.redeemable) continue;
-      if (seen.has(p.conditionId)) continue;
-      seen.add(p.conditionId);
+      const key = seenKey(funder, p.conditionId);
+      if (seen.has(key)) continue;
+      seen.add(key);
       changed = true;
       addNotification({
-        id: `redeemable:${p.conditionId}`,
+        id: `redeemable:${funder.toLowerCase()}:${p.conditionId}`,
         kind: "redeemable",
         title: "Market resolved — ready to claim",
         body: `${p.title} · ${p.outcome} won. Open Polymarket to redeem your $${p.currentValue.toFixed(2)}.`,

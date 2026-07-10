@@ -268,25 +268,34 @@ async function isDeployed(
   );
 }
 
-// Polymarket collateral on Polygon (USDC.e), 6 decimals.
+// Polymarket collateral on Polygon. Two eras both count as "funds": USDC.e
+// (legacy, pre-2026-04) and pUSD (CLOB v2). A wallet migrated to v2 can hold
+// only pUSD, so a tiebreak that looks at USDC.e alone would rank it as empty.
 const USDC_E = "0x2791bca1f2de4661ed88a30c99a7a9449aa84174";
+const PUSD = "0xc011a7e12a19f7b1f670d46f03b03f3342e82dfb";
 
-/** USDC.e balance (base units) of an address, via Etherscan. Returns 0n on any
- *  error — it's only a tiebreak, so failing low just defers to priority order
- *  rather than risking a wrong account. */
-async function usdcBalance(address: string, apiKey: string): Promise<bigint> {
+/** Balance (base units) of one token for an address, via Etherscan. Returns
+ *  `null` when the balance could NOT be determined (rate limit / error / bad
+ *  shape) — the caller must treat null as "couldn't check", never as zero, so a
+ *  throttled tiebreak can't silently rank a funded account as empty. */
+async function tokenBalance(
+  token: string,
+  address: string,
+  apiKey: string,
+): Promise<bigint | null> {
   const url = new URL("https://api.etherscan.io/v2/api");
   url.searchParams.set("chainid", "137");
   url.searchParams.set("module", "account");
   url.searchParams.set("action", "tokenbalance");
-  url.searchParams.set("contractaddress", USDC_E);
+  url.searchParams.set("contractaddress", token);
   url.searchParams.set("address", address);
   url.searchParams.set("tag", "latest");
   url.searchParams.set("apikey", apiKey);
   try {
     const r = await fetch(url.toString(), { cache: "no-store" });
-    if (!r.ok) return 0n;
+    if (!r.ok) return null;
     const body = (await r.json()) as { status?: string; result?: unknown };
+    // status "1" + numeric result is authoritative (result "0" = genuine zero).
     if (
       body.status === "1" &&
       typeof body.result === "string" &&
@@ -294,10 +303,25 @@ async function usdcBalance(address: string, apiKey: string): Promise<bigint> {
     ) {
       return BigInt(body.result);
     }
-    return 0n;
+    return null; // NOTOK / throttle / unexpected shape → couldn't check
   } catch {
-    return 0n;
+    return null;
   }
+}
+
+/** Combined tradeable-collateral balance (USDC.e + pUSD). Returns null if
+ *  EITHER token lookup couldn't be determined, so the caller falls back to
+ *  "unavailable" rather than guessing which account is funded. */
+async function collateralBalance(
+  address: string,
+  apiKey: string,
+): Promise<bigint | null> {
+  const [usdce, pusd] = await Promise.all([
+    tokenBalance(USDC_E, address, apiKey),
+    tokenBalance(PUSD, address, apiKey),
+  ]);
+  if (usdce === null || pusd === null) return null;
+  return usdce + pusd;
 }
 
 async function forwardLookup(eoa: string, apiKey: string): Promise<Result> {
@@ -325,47 +349,60 @@ async function forwardLookup(eoa: string, apiKey: string): Promise<Result> {
     }
   }
 
+  const UNAVAILABLE: Result = {
+    // "Couldn't check" (client treats this as unavailable) — never a false
+    // "no account" or a definitively-wrong account. Not cached.
+    status: 502,
+    body: { error: "Upstream lookup error — please retry." },
+    ttlMs: 0,
+  };
+
   if (deployed.length === 0) {
-    if (hadError) {
-      // Couldn't conclusively check every candidate — "couldn't check" (client
-      // treats this as unavailable), never a false "no account".
-      return {
-        status: 502,
-        body: { error: "Upstream lookup error — please retry." },
-        ttlMs: 0,
-      };
-    }
+    if (hadError) return UNAVAILABLE;
     // Brand-new wallet with no Polymarket account yet. Caller offers create.
     return { status: 200, body: { proxy: null }, ttlMs: TTL_MISS };
   }
 
-  // Default to the highest-priority deployed account (matches Polymarket's own
-  // classifyWalletType order). When more than one is deployed, prefer whichever
-  // actually holds USDC — otherwise we could bind an empty account while the
-  // user's funds sit in another, leaving them unable to trade.
-  let chosen = deployed[0];
-  if (deployed.length > 1) {
-    const balances = await Promise.all(
-      deployed.map((c) => usdcBalance(c.address, apiKey)),
-    );
-    let best = 0;
-    for (let i = 1; i < deployed.length; i++) {
-      if (balances[i] > balances[best]) best = i;
-    }
-    // Only override priority order when the funded account beats it outright.
-    if (balances[best] > balances[0]) chosen = deployed[best];
-  }
-
-  return {
+  const found = (c: (typeof deployed)[number]): Result => ({
     status: 200,
     body: {
-      proxy: chosen.address,
-      proxyType: chosen.type,
+      proxy: c.address,
+      proxyType: c.type,
       // CLOB SignatureType: POLY_PROXY=1, POLY_GNOSIS_SAFE=2, POLY_1271=3.
-      signatureType: chosen.signatureType,
+      signatureType: c.signatureType,
     },
     ttlMs: TTL_FOUND,
-  };
+  });
+
+  // Fast path: exactly one account, checked cleanly — no balance call needed.
+  if (deployed.length === 1 && !hadError) return found(deployed[0]);
+
+  // Otherwise we must inspect balances: either to break a tie between multiple
+  // deployed accounts, or to confirm the single account is actually funded when
+  // a sibling candidate's deployment check failed (a funded account could hide
+  // behind that failure). Combined collateral = USDC.e + pUSD.
+  const balances = await Promise.all(
+    deployed.map((c) => collateralBalance(c.address, apiKey)),
+  );
+  // Any undeterminable balance → we can't reliably pick the funded account
+  // (invariant #4). Don't guess; tell the client to retry.
+  if (balances.some((b) => b === null)) return UNAVAILABLE;
+  const bal = balances as bigint[];
+
+  // Prefer the highest-priority account (index 0), overriding only when another
+  // deployed account holds strictly more collateral.
+  let chosenIdx = 0;
+  for (let i = 1; i < deployed.length; i++) {
+    if (bal[i] > bal[chosenIdx]) chosenIdx = i;
+  }
+  if (chosenIdx !== 0 && !(bal[chosenIdx] > bal[0])) chosenIdx = 0;
+
+  // A candidate deployment check failed AND the account we'd bind is empty:
+  // the user's funds may sit in the account we couldn't check. Don't bind an
+  // empty account and cache it for an hour — treat as unavailable.
+  if (hadError && bal[chosenIdx] === 0n) return UNAVAILABLE;
+
+  return found(deployed[chosenIdx]);
 }
 
 async function reverseLookup(proxy: string, apiKey: string): Promise<Result> {

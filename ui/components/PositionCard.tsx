@@ -33,6 +33,7 @@ function rawToShares(raw: string): number {
 export function PositionCard({ market }: { market: TableRow }) {
   const session = useClobSession();
   const liveYesMid = useLiveMid(market.tokenYes);
+  const liveNoMid = useLiveMid(market.tokenNo);
   const [holdings, setHoldings] = useState<Holdings | null>(null);
   const [loading, setLoading] = useState(false);
   const [sellOutcome, setSellOutcome] = useState<"yes" | "no" | null>(null);
@@ -50,6 +51,12 @@ export function PositionCard({ market }: { market: TableRow }) {
   ]);
 
   useEffect(() => {
+    // Clear the previous account's holdings the moment the wallet/market
+    // identity changes, so a stale Close/Sell can't act on the old account
+    // while the new one loads (or if its load errors). Same-account transient
+    // errors still keep prior holdings — that path is the setTimeout re-poll,
+    // which doesn't re-run this effect.
+    setHoldings(null);
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -114,9 +121,10 @@ export function PositionCard({ market }: { market: TableRow }) {
   }
 
   const implied = liveYesMid ?? market.impliedYes ?? 0.5;
-  // Mark each side at the live YES probability — NO price is its complement.
+  // Mark YES at its live probability. Mark NO at the NO book's OWN live mid when
+  // available — with a spread it isn't exactly 1 − YES; fall back to complement.
   const yesMark = holdings.yes * implied;
-  const noMark = holdings.no * (1 - implied);
+  const noMark = holdings.no * (liveNoMid ?? 1 - implied);
   const totalMark = yesMark + noMark;
 
   // Sum P&L across both outcomes when present.
@@ -128,6 +136,13 @@ export function PositionCard({ market }: { market: TableRow }) {
     totalCost > 0 ? (cashPnl / totalCost) * 100 : 0;
   const haveAnyPnlData = positions.yes != null || positions.no != null;
   const pnlSign = cashPnl > 0.005 ? 1 : cashPnl < -0.005 ? -1 : 0;
+
+  // Resolved winners must be REDEEMED, not CLOB-sold — a resolved market has no
+  // book to sell into. Gate Close/Sell off for redeemable sides and surface a
+  // redeem link instead (the Portfolio path already does this; the market-detail
+  // card is the surface that fix didn't cover).
+  const yesRedeemable = positions.yes?.redeemable ?? false;
+  const noRedeemable = positions.no?.redeemable ?? false;
 
   return (
     <>
@@ -146,8 +161,9 @@ export function PositionCard({ market }: { market: TableRow }) {
             mark={yesMark}
             tone="emerald"
             position={positions.yes}
-            onSell={holdings.yes > 0 ? () => setSellOutcome("yes") : undefined}
-            onClose={holdings.yes > 0 ? () => setCloseOutcome("yes") : undefined}
+            redeemable={yesRedeemable}
+            onSell={holdings.yes > 0 && !yesRedeemable ? () => setSellOutcome("yes") : undefined}
+            onClose={holdings.yes > 0 && !yesRedeemable ? () => setCloseOutcome("yes") : undefined}
           />
           <Side
             label="NO shares"
@@ -155,8 +171,9 @@ export function PositionCard({ market }: { market: TableRow }) {
             mark={noMark}
             tone="rose"
             position={positions.no}
-            onSell={holdings.no > 0 ? () => setSellOutcome("no") : undefined}
-            onClose={holdings.no > 0 ? () => setCloseOutcome("no") : undefined}
+            redeemable={noRedeemable}
+            onSell={holdings.no > 0 && !noRedeemable ? () => setSellOutcome("no") : undefined}
+            onClose={holdings.no > 0 && !noRedeemable ? () => setCloseOutcome("no") : undefined}
           />
           <div className="flex flex-col">
             <span className="text-[10px] uppercase tracking-wider text-muted-2">
@@ -218,6 +235,7 @@ function Side({
   mark,
   tone,
   position,
+  redeemable,
   onSell,
   onClose,
 }: {
@@ -226,6 +244,7 @@ function Side({
   mark: number;
   tone: "emerald" | "rose";
   position: Position | null;
+  redeemable?: boolean;
   onSell?: () => void;
   onClose?: () => void;
 }) {
@@ -250,6 +269,15 @@ function Side({
         <span className={cn("tabular text-lg font-semibold", colour)}>
           {shares.toFixed(2)}
         </span>
+        {redeemable && shares > 0 ? (
+          <a
+            href="/portfolio"
+            className="rounded-md border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/20"
+            title="This market resolved — claim your winnings in Portfolio"
+          >
+            Redeem
+          </a>
+        ) : null}
         {onClose ? (
           <button
             type="button"

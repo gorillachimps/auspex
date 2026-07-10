@@ -150,10 +150,10 @@ export default function WalletDetailPage({ params }: Props) {
               hint="Mark-to-market on open"
             />
             <Stat
-              label="Lifetime realized"
+              label="Realized (traded)"
               value={loading ? "…" : fmtSignedUSD(pnl?.realizedTotal ?? 0)}
               tone={signTone(pnl?.realizedTotal ?? 0)}
-              hint={`${pnl?.closedCount ?? 0} closed trades`}
+              hint={`${pnl?.closedCount ?? 0} closed trades · recent window, excl. redemptions`}
             />
             <Stat
               label="Win rate"

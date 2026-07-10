@@ -64,6 +64,11 @@ type StoreEntry = {
   listeners: Set<() => void>;
   timer: ReturnType<typeof setTimeout> | null;
   inFlight: boolean;
+  /** Set when a reload is requested (e.g. auspex:order-placed) while a poll is
+   *  already in flight. The in-flight poll captured pre-trade state, so we must
+   *  refetch as soon as it settles instead of dropping the request and showing
+   *  stale positions for up to REFRESH_MS. */
+  pendingReload: boolean;
   /** Stable snapshot object — identity changes only when data changes, so
    *  consuming components only re-render on real updates. */
   snapshot: PositionsState;
@@ -83,17 +88,28 @@ function emit(entry: StoreEntry, patch: Partial<PositionsState>) {
 async function load(funder: `0x${string}`) {
   const entry = store.get(keyFor(funder));
   if (!entry) return;
-  if (entry.inFlight) return; // dedupe overlapping loads
+  if (entry.inFlight) {
+    // A reload was requested mid-poll — remember it and refetch once the
+    // current poll settles, instead of silently dropping it.
+    entry.pendingReload = true;
+    return;
+  }
   entry.inFlight = true;
+  entry.pendingReload = false;
   emit(entry, { loading: true, error: null });
   try {
     const url = `${POSITIONS_HOST}/positions?user=${funder}&sizeThreshold=0`;
     const r = await fetch(url, { cache: "no-store" });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
-    const positions: Position[] = Array.isArray(data) ? data : [];
+    // A malformed 200 (non-array body, e.g. {error:...}) must NOT be read as
+    // "zero positions" — that would erase the last-known portfolio and mark the
+    // poll successful. Treat it as an error so prior positions survive.
+    if (!Array.isArray(data)) {
+      throw new Error("Unexpected /positions response shape (expected array)");
+    }
     emit(entry, {
-      positions,
+      positions: data as Position[],
       loading: false,
       error: null,
       fetchedAt: Date.now(),
@@ -103,10 +119,15 @@ async function load(funder: `0x${string}`) {
     emit(entry, { loading: false, error: (e as Error).message });
   } finally {
     entry.inFlight = false;
-    // Reschedule only while someone is still listening.
     if (entry.listeners.size > 0) {
       if (entry.timer) clearTimeout(entry.timer);
-      entry.timer = setTimeout(() => load(funder), REFRESH_MS);
+      if (entry.pendingReload) {
+        // A fill (or other refresh) arrived during the poll — refetch now.
+        entry.pendingReload = false;
+        load(funder);
+      } else {
+        entry.timer = setTimeout(() => load(funder), REFRESH_MS);
+      }
     }
   }
 }
@@ -138,6 +159,7 @@ function subscribe(funder: `0x${string}`, listener: () => void): () => void {
       listeners: new Set(),
       timer: null,
       inFlight: false,
+      pendingReload: false,
       snapshot: { ...EMPTY, refresh: () => load(funder) },
     };
     store.set(k, entry);
