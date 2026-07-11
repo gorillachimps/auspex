@@ -229,25 +229,42 @@ export function ActivityView() {
     downloadCsv(csvFilename("trades"), toCsv(headers, rows));
   }
 
-  if (session.status === "loading" || session.status === "deriving") {
+  if (
+    session.status === "loading" ||
+    session.status === "linking" ||
+    session.status === "deriving"
+  ) {
     return (
       <div className="mt-6">
         <LoadingState
           variant="panel"
-          title="Connecting…"
-          body="Authorizing your session with the Polymarket CLOB."
+          title={session.status === "linking" ? "Finding your account…" : "Connecting…"}
+          body="Looking up your Polymarket account."
         />
       </div>
     );
   }
 
-  if (session.status !== "ready" || !funder) {
+  // Fills come from the PUBLIC /trades endpoint keyed by the funder address —
+  // no CLOB auth ("ready") required. Gate on having a funder, exactly like the
+  // Positions tab, so a freshly-connected wallet that hasn't signed a CLOB
+  // session yet (status "linked") still sees its history. Requiring "ready"
+  // here hid fills behind "Connect your wallet" until the first order.
+  if (!funder) {
     return (
       <div className="mt-6">
         <EmptyState
           icon={<Wallet className="h-5 w-5 text-muted" aria-hidden="true" />}
-          title="Connect your wallet to see fills"
-          body="Use the Connect button in the top-right. Your fill history will show up here once you've placed your first trade."
+          title={
+            session.status === "no-funder"
+              ? "No Polymarket account found for this wallet"
+              : "Connect your wallet to see fills"
+          }
+          body={
+            session.status === "no-funder"
+              ? "This wallet has no Polymarket account yet. Add one from the Connect menu, then your fills will show up here."
+              : "Use the Connect button in the top-right. Your fill history will show up here once you've placed your first trade."
+          }
         />
       </div>
     );
