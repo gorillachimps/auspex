@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-07-12T07:52:46.556Z",
-  "count": 54,
+  "generatedAt": "2026-07-12T12:46:46.386Z",
+  "count": 46,
   "stats": {
     "0x56687bf447db6ffa42ffe2204a05edaa20f55839": {
       "winRate": null,
@@ -254,18 +254,6 @@
       "realized30d": 0,
       "realizedTotal": 0
     },
-    "0x36a3f17401e395ef4cb1b7f42bcdb8ab8e15fafb": {
-      "winRate": null,
-      "closedCount": 0,
-      "realized30d": 0,
-      "realizedTotal": 0
-    },
-    "0xee00ba338c59557141789b127927a55f5cc5cea1": {
-      "winRate": 1,
-      "closedCount": 3,
-      "realized30d": 118,
-      "realizedTotal": 118
-    },
     "0xd6505aab3c6bef32ae6c96dbd8023d7c4df114fb": {
       "winRate": null,
       "closedCount": 0,
@@ -278,53 +266,17 @@
       "realized30d": 0,
       "realizedTotal": 0
     },
+    "0xee00ba338c59557141789b127927a55f5cc5cea1": {
+      "winRate": 1,
+      "closedCount": 3,
+      "realized30d": 118,
+      "realizedTotal": 118
+    },
     "0xf0318c32136c2db7fec88b84869aee6a1106c80c": {
       "winRate": 0,
       "closedCount": 1613,
       "realized30d": -138,
       "realizedTotal": -138
-    },
-    "0xe549581668a5751c1972d3ad2d1991d900bd2d54": {
-      "winRate": null,
-      "closedCount": 0,
-      "realized30d": 0,
-      "realizedTotal": 0
-    },
-    "0xd38b71f3e8ed1af71983e5c309eac3dfa9b35029": {
-      "winRate": null,
-      "closedCount": 0,
-      "realized30d": 0,
-      "realizedTotal": 0
-    },
-    "0x03e8a544e97eeff5753bc1e90d46e5ef22af1697": {
-      "winRate": 1,
-      "closedCount": 451,
-      "realized30d": 7342,
-      "realizedTotal": 7342
-    },
-    "0x6480542954b70a674a74bd1a6015dec362dc8dc5": {
-      "winRate": 0,
-      "closedCount": 2410,
-      "realized30d": -2581,
-      "realizedTotal": -2581
-    },
-    "0xa61ef8773ec2e821962306ca87d4b57e39ff0abd": {
-      "winRate": 0.05540540540540541,
-      "closedCount": 1480,
-      "realized30d": -580,
-      "realizedTotal": -580
-    },
-    "0xe9076a87c5ed90ef16e6fe6529c943baeca0cff6": {
-      "winRate": 0.3611111111111111,
-      "closedCount": 324,
-      "realized30d": 1328,
-      "realizedTotal": 1328
-    },
-    "0xd218e474776403a330142299f7796e8ba32eb5c9": {
-      "winRate": 1,
-      "closedCount": 1,
-      "realized30d": 115,
-      "realizedTotal": 115
     }
   }
 }
