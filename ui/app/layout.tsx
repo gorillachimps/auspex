@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { Providers } from "./providers";
+import { Analytics } from "@vercel/analytics/next";
 import { PlausibleScript } from "@/components/PlausibleScript";
 import { SITE_URL } from "@/lib/env-client";
 import { GeistSans } from "geist/font/sans";
@@ -38,6 +39,9 @@ export default function RootLayout({
         <NuqsAdapter>
           <Providers>{children}</Providers>
         </NuqsAdapter>
+        {/* Vercel Web Analytics — cookieless page-view counting. Dev/preview
+            builds emit debug no-ops; only production deployments report. */}
+        <Analytics />
       </body>
     </html>
   );
