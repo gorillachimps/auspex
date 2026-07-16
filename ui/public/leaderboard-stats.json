@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-16T13:09:38.932Z",
+  "generatedAt": "2026-07-16T18:51:08.321Z",
   "count": 48,
   "stats": {
     "0x56687bf447db6ffa42ffe2204a05edaa20f55839": {
@@ -249,10 +249,10 @@
       "realizedTotal": 0
     },
     "0xf0318c32136c2db7fec88b84869aee6a1106c80c": {
-      "winRate": 0.8492586490939045,
-      "closedCount": 1214,
-      "realized30d": 311081,
-      "realizedTotal": 311081
+      "winRate": 0.8739669421487604,
+      "closedCount": 1452,
+      "realized30d": 311650,
+      "realizedTotal": 311650
     },
     "0x9d84ce0306f8551e02efef1680475fc0f1dc1344": {
       "winRate": 0.2422360248447205,
