@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-07-17T12:55:08.704Z",
-  "count": 53,
+  "generatedAt": "2026-07-17T18:47:06.947Z",
+  "count": 54,
   "stats": {
     "0x56687bf447db6ffa42ffe2204a05edaa20f55839": {
       "winRate": null,
@@ -183,10 +183,10 @@
       "realizedTotal": 0
     },
     "0xf8831548531d56ad6a4331493243c447a827cd1f": {
-      "winRate": null,
-      "closedCount": 0,
-      "realized30d": 0,
-      "realizedTotal": 0
+      "winRate": 1,
+      "closedCount": 1,
+      "realized30d": 1,
+      "realizedTotal": 1
     },
     "0xa7b7505abe2fdcc497c00074534f7fbd7e07962e": {
       "winRate": null,
@@ -213,10 +213,10 @@
       "realizedTotal": 0
     },
     "0xf0318c32136c2db7fec88b84869aee6a1106c80c": {
-      "winRate": 0.8742268041237113,
-      "closedCount": 1455,
-      "realized30d": 311649,
-      "realizedTotal": 311649
+      "winRate": 0.2324431256181998,
+      "closedCount": 1011,
+      "realized30d": 525,
+      "realizedTotal": 525
     },
     "0xee613b3fc183ee44f9da9c05f53e2da107e3debf": {
       "winRate": null,
@@ -296,7 +296,7 @@
       "realized30d": 0,
       "realizedTotal": 0
     },
-    "0x9495425feeb0c250accb89275c97587011b19a27": {
+    "0x076daa87c4fe1a85402a9b6b8e0a866224388d4c": {
       "winRate": null,
       "closedCount": 0,
       "realized30d": 0,
@@ -309,16 +309,22 @@
       "realizedTotal": -2531
     },
     "0xa61ef8773ec2e821962306ca87d4b57e39ff0abd": {
-      "winRate": 0.20240480961923848,
-      "closedCount": 998,
-      "realized30d": 13,
-      "realizedTotal": 13
+      "winRate": 0.2,
+      "closedCount": 1060,
+      "realized30d": 14,
+      "realizedTotal": 14
     },
     "0xe9076a87c5ed90ef16e6fe6529c943baeca0cff6": {
-      "winRate": 0.45925925925925926,
-      "closedCount": 405,
-      "realized30d": -2379,
-      "realizedTotal": -2379
+      "winRate": 0.42585551330798477,
+      "closedCount": 526,
+      "realized30d": 86166,
+      "realizedTotal": 86166
+    },
+    "0xfe787d2da716d60e8acff57fb87eb13cd4d10319": {
+      "winRate": null,
+      "closedCount": 0,
+      "realized30d": 0,
+      "realizedTotal": 0
     }
   }
 }
