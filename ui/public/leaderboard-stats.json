@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-07-18T12:42:03.740Z",
-  "count": 50,
+  "generatedAt": "2026-07-18T18:41:19.619Z",
+  "count": 48,
   "stats": {
     "0x56687bf447db6ffa42ffe2204a05edaa20f55839": {
       "winRate": null,
@@ -289,18 +289,6 @@
       "closedCount": 0,
       "realized30d": 0,
       "realizedTotal": 0
-    },
-    "0x076daa87c4fe1a85402a9b6b8e0a866224388d4c": {
-      "winRate": null,
-      "closedCount": 0,
-      "realized30d": 0,
-      "realizedTotal": 0
-    },
-    "0xa61ef8773ec2e821962306ca87d4b57e39ff0abd": {
-      "winRate": 0.2899343544857768,
-      "closedCount": 914,
-      "realized30d": 43,
-      "realizedTotal": 43
     }
   }
 }
