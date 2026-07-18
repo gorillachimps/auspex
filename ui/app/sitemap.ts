@@ -4,7 +4,11 @@ import { SITE_URL } from "@/lib/env-client";
 
 // Cap the per-market section so the sitemap stays under the 50k-URL guidance and
 // only ranks markets with real liquidity / volume.
-const MAX_MARKETS = 5000;
+// Top-N by volume. Was 5000: combined with "hourly" hints and per-request page
+// rendering, that invited crawlers to burn a lambda render per URL per visit
+// and dominated Fluid CPU. 1000 covers every market with real liquidity; the
+// long tail is still reachable through on-site links, just not crawl-promoted.
+const MAX_MARKETS = 1000;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [markets, snapshot] = await Promise.all([
@@ -66,7 +70,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     pages.push({
       url: `${SITE_URL}/markets/${m.slug}`,
       lastModified,
-      changeFrequency: "hourly",
+      // "daily", not "hourly": the page content crawlers see is ISR-cached and
+      // the odds themselves aren't why these pages rank. Hourly hints invited
+      // constant re-crawls of 1k dynamic URLs.
+      changeFrequency: "daily",
       priority: 0.6,
     });
   }

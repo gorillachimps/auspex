@@ -6,7 +6,7 @@ import { PortfolioTabs } from "@/components/PortfolioTabs";
 import { PortfolioView } from "@/components/PortfolioView";
 import { TotalBalance } from "@/components/TotalBalance";
 
-export const dynamic = "force-dynamic";
+// Static shell — all content is client-fetched per wallet.
 
 export const metadata: Metadata = {
   title: "Portfolio · Auspex",

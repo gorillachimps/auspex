@@ -34,6 +34,20 @@ const nextConfig: NextConfig = {
         source: "/((?!embed/).*)",
         headers: SECURITY_HEADERS,
       },
+      // Per-market OG images are satori PNG renders — the most CPU-expensive
+      // request in the app — and the framework forces their Cache-Control to
+      // max-age=0. Vercel's CDN honors Vercel-CDN-Cache-Control above
+      // Cache-Control (and strips it from the response), so link-preview
+      // crawlers hit the edge for an hour instead of re-rendering per fetch.
+      {
+        source: "/markets/:slug/opengraph-image",
+        headers: [
+          {
+            key: "Vercel-CDN-Cache-Control",
+            value: "public, s-maxage=3600, stale-while-revalidate=86400",
+          },
+        ],
+      },
       // /embed/* is the public embed widget — must be iframable from any
       // origin (X cards, Substack, blogs, Discord). Allow framing, but keep
       // the non-frame hardening headers.

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { fmtImpliedPct } from "@/lib/format";
@@ -11,11 +12,6 @@ import { OrderTicket } from "./OrderTicket";
 
 type Props = {
   market: TableRow;
-  /** When set (via the market URL's ?copy=yes|no), auto-open the buy ticket
-   *  for that outcome once on mount. Powers "copy this fill" from the follow
-   *  feed — routes the user straight into a pre-filled ticket. Never sizes or
-   *  submits anything; the user still chooses the amount and signs. */
-  autoOpenOutcome?: "yes" | "no" | null;
 };
 
 /**
@@ -32,10 +28,18 @@ type Props = {
  * appears below this panel. Keeping the entry points split keeps the
  * UI honest about which direction you're trading.
  */
-export function BuyPanel({ market, autoOpenOutcome }: Props) {
+export function BuyPanel({ market }: Props) {
   const liveYesMid = useLiveMid(market.tokenYes);
   const session = useClobSession();
   const [ticket, setTicket] = useState<{ outcome: "yes" | "no" } | null>(null);
+  // "Copy this fill" deep link (?copy=yes|no): read client-side so the market
+  // page itself stays statically cacheable (ISR) — awaiting searchParams in the
+  // page would force every crawler hit into a full dynamic render. Requires a
+  // <Suspense> boundary around this component (see the market page).
+  const searchParams = useSearchParams();
+  const copyParam = searchParams.get("copy");
+  const autoOpenOutcome: "yes" | "no" | null =
+    copyParam === "yes" || copyParam === "no" ? copyParam : null;
 
   const yesPrice = liveYesMid ?? market.impliedYes ?? null;
   const noPrice = yesPrice != null ? 1 - yesPrice : null;

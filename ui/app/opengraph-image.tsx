@@ -4,6 +4,8 @@ import { getMarkets, getSnapshotMeta } from "@/lib/data";
 export const alt = "Auspex — crypto bets sorted by signal";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
+// Hour-cached like the market OG images — satori renders are CPU-heavy.
+export const revalidate = 3600;
 
 const compactUSD = new Intl.NumberFormat("en-US", {
   style: "currency",

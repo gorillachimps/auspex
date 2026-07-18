@@ -4,7 +4,7 @@ import { Footer } from "@/components/Footer";
 import { ActivityView } from "@/components/ActivityView";
 import { PortfolioTabs } from "@/components/PortfolioTabs";
 
-export const dynamic = "force-dynamic";
+// Static shell — all content is client-fetched per wallet.
 
 export const metadata: Metadata = {
   title: "Activity · Auspex",

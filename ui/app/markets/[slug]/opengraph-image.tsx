@@ -12,6 +12,10 @@ import { summarizeRules } from "@/lib/rules";
 export const alt = "Auspex market";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
+// Cache rendered PNGs for an hour — satori image generation is the most
+// CPU-expensive request in the app, and link-preview crawlers re-fetch OG
+// images aggressively. Numbers an hour stale are fine for a preview card.
+export const revalidate = 3600;
 
 const FAMILY_TONE_HEX: Record<string, { bg: string; fg: string }> = {
   violet: { bg: "rgba(167,139,250,0.18)", fg: "#c4b5fd" },

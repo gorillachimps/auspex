@@ -5,7 +5,7 @@ import { ApprovalBanner } from "@/components/ApprovalBanner";
 import { OrdersView } from "@/components/OrdersView";
 import { PortfolioTabs } from "@/components/PortfolioTabs";
 
-export const dynamic = "force-dynamic";
+// Static shell — all content is client-fetched per wallet.
 
 export const metadata: Metadata = {
   title: "Orders · Auspex",

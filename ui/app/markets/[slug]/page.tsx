@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { ChevronLeft, ExternalLink } from "lucide-react";
@@ -34,11 +35,24 @@ import {
 import { familyMeta, FAMILY_TONE_CLASSES } from "@/lib/families";
 import { summarizeRules } from "@/lib/rules";
 
-export const dynamic = "force-dynamic";
+// ISR: serve cached HTML at the edge, re-render at most every 5 minutes.
+// Crawler traffic across the ~1k-URL sitemap was previously a fresh lambda
+// render per hit (force-dynamic) and dominated Fluid CPU. Live prices reach
+// the user via client hooks (WS mid + polling) regardless of SSR age, and the
+// ?copy deep link is read client-side in BuyPanel so it can't force dynamic.
+export const revalidate = 300;
+
+// Present (returning nothing) to switch this dynamic-param route from
+// per-request rendering to on-demand ISR: each slug renders once on first
+// visit, then serves from cache for `revalidate`. Deliberately empty — the
+// data pipeline redeploys many times a day, and prebuilding ~1k pages per
+// deploy would burn build minutes for pages a crawler may never hit.
+export function generateStaticParams(): Array<{ slug: string }> {
+  return [];
+}
 
 type Props = {
   params: Promise<{ slug: string }>;
-  searchParams?: Promise<{ copy?: string }>;
 };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -55,12 +69,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function MarketDetailPage({ params, searchParams }: Props) {
+export default async function MarketDetailPage({ params }: Props) {
   const { slug } = await params;
-  const { copy } = (await searchParams) ?? {};
-  // ?copy=yes|no auto-opens the buy ticket (the follow-feed "copy this fill"
-  // deep link). Anything else is ignored.
-  const autoOpenOutcome = copy === "yes" || copy === "no" ? copy : null;
   const snapshotRow = await getMarketBySlug(slug);
   if (!snapshotRow) notFound();
   // Overlay live Binance prices so "current state" + distance reflect now, not
@@ -198,7 +208,12 @@ export default async function MarketDetailPage({ params, searchParams }: Props) 
           </div>
 
           <div className="mt-6">
-            <BuyPanel market={row} autoOpenOutcome={autoOpenOutcome} />
+            {/* Suspense boundary required: BuyPanel reads useSearchParams
+                (the ?copy deep link), which client-renders up to the nearest
+                boundary on a prerendered route. */}
+            <Suspense fallback={null}>
+              <BuyPanel market={row} />
+            </Suspense>
           </div>
 
           <div className="mt-4">

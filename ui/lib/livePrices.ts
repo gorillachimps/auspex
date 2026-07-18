@@ -33,8 +33,14 @@ let inFlight: Promise<LivePrices | null> | null = null;
 async function fetchAllTickers(): Promise<LivePrices | null> {
   for (const host of BINANCE_HOSTS) {
     try {
+      // next.revalidate (NOT cache:"no-store"): a no-store fetch forces every
+      // route that overlays live prices (home, market pages) into per-request
+      // dynamic rendering, defeating their ISR and burning a lambda render per
+      // crawler hit. A 25 s data-cache window sits just under this module's own
+      // 30 s TTL; worst case the "prices Xs ago" pill under-reports age by
+      // ≤25 s on the SSR paint, which the client's own polling replaces anyway.
       const r = await fetch(host, {
-        cache: "no-store",
+        next: { revalidate: 25 },
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (!r.ok) continue;

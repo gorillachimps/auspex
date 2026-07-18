@@ -4,7 +4,7 @@ import { Footer } from "@/components/Footer";
 import { BuilderStatsView } from "@/components/BuilderStatsView";
 import { BUILDER_CODE } from "@/lib/polymarket";
 
-export const dynamic = "force-dynamic";
+// Static shell — attribution data loads client-side.
 
 export const metadata: Metadata = {
   title: "Builder · Auspex",

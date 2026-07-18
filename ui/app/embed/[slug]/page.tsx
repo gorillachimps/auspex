@@ -6,8 +6,15 @@ import { getMarketBySlug } from "@/lib/data";
 
 // Embed routes opt out of indexing — the canonical URL is the parent
 // /markets/[slug] page. The embed view is just a thin compositional
-// surface for iframes.
-export const dynamic = "force-dynamic";
+// surface for iframes. ISR (5 min): the widget's live numbers come from
+// client hooks; per-request SSR only burned Fluid CPU per iframe load.
+export const revalidate = 300;
+
+// Empty on purpose — enables on-demand ISR without per-deploy prebuild cost
+// (see the market page's note).
+export function generateStaticParams(): Array<{ slug: string }> {
+  return [];
+}
 
 type Props = { params: Promise<{ slug: string }> };
 

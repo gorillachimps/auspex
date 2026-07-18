@@ -16,10 +16,13 @@ export const metadata: Metadata = {
 
 const MAX_ROWS = 500;
 
-// Deadline-relative formatting in the table calls Date.now() at render time;
-// keep SSR and client-hydration close together to avoid mismatches at the
-// "<1h" / "ended" boundary.
-export const dynamic = "force-dynamic";
+// ISR (60 s): a per-request render (force-dynamic) made every visit + crawler
+// hit a full lambda render of ~500 rows, dominating Fluid CPU. The client
+// (HomeShell) polls /api/markets right after mount, so an SSR snapshot up to
+// 60 s old self-heals within seconds. Trade-off accepted: deadline-relative
+// labels ("<1h left") can straddle a boundary between SSR and hydration —
+// rare, cosmetic, and React patches it on hydrate.
+export const revalidate = 60;
 
 export default async function HomePage() {
   const [all, snapshot, live] = await Promise.all([

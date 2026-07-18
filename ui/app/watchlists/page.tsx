@@ -4,7 +4,8 @@ import { Footer } from "@/components/Footer";
 import { WatchlistsView } from "@/components/WatchlistsView";
 import { getMarkets } from "@/lib/data";
 
-export const dynamic = "force-dynamic";
+// ISR: renders from the committed snapshot; stars/ordering are client-side.
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "Watchlists · Auspex",
