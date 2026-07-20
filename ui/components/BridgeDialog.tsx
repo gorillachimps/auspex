@@ -18,8 +18,6 @@ import { polygon } from "viem/chains";
 import {
   bridgeQuote,
   executeBridge,
-  POLYGON_CHAIN_ID,
-  POLYGON_USDC_E,
   SOURCE_CHAINS,
   SPOKE_POOL_BY_CHAIN,
   USDC_BY_CHAIN,
@@ -666,17 +664,6 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
           </div>
         </div>
 
-        {/* Footer note — only on idle to avoid clutter mid-flight */}
-        {!inFlight && status.kind !== "success" ? (
-          <p className="mt-3 text-[10px] leading-relaxed text-muted-2">
-            Routed via Across spoke pool {""}
-            <span className="font-mono">
-              {fromChainId} → {POLYGON_CHAIN_ID}
-            </span>
-            . Output token: USDC.e ({POLYGON_USDC_E.slice(0, 6)}…
-            {POLYGON_USDC_E.slice(-4)}).
-          </p>
-        ) : null}
       </div>
     </div>,
     document.body,
