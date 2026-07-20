@@ -4,11 +4,14 @@ import { SITE_URL } from "@/lib/env-client";
 
 // Cap the per-market section so the sitemap stays under the 50k-URL guidance and
 // only ranks markets with real liquidity / volume.
-// Top-N by volume. Was 5000: combined with "hourly" hints and per-request page
-// rendering, that invited crawlers to burn a lambda render per URL per visit
-// and dominated Fluid CPU. 1000 covers every market with real liquidity; the
-// long tail is still reachable through on-site links, just not crawl-promoted.
-const MAX_MARKETS = 1000;
+// Top-N by volume. History: 5000 → 1000 during the Jul-13 Fluid-CPU crisis
+// (per-request rendering made every crawl a lambda render). Week-1 analytics
+// then showed organic search is the working acquisition channel (a single
+// "will-ethereum-reach-2000" market page pulled ~73 visitors from Google), and
+// ISR now serves crawls from cache — so widen to 2500 to grow the ranked query
+// surface. Not back to 5000 yet: the rolling 30-day CPU window is still ~75%
+// consumed until the launch-week burn ages out (~mid-Aug); revisit then.
+const MAX_MARKETS = 2500;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [markets, snapshot] = await Promise.all([
