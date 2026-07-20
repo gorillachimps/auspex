@@ -7,6 +7,7 @@ import { Footer } from "@/components/Footer";
 import { DeltaBar } from "@/components/DeltaBar";
 import { RcBar } from "@/components/RcBar";
 import { BuyPanel } from "@/components/BuyPanel";
+import { StarToggle } from "@/components/StarToggle";
 import { PositionCard } from "@/components/PositionCard";
 import { OrderBookView } from "@/components/OrderBookView";
 import { DepthChart } from "@/components/DepthChart";
@@ -34,6 +35,7 @@ import {
 } from "@/lib/format";
 import { familyMeta, FAMILY_TONE_CLASSES } from "@/lib/families";
 import { summarizeRules } from "@/lib/rules";
+import { SITE_URL } from "@/lib/env-client";
 
 // ISR: serve cached HTML at the edge, re-render at most every 5 minutes.
 // Crawler traffic across the ~1k-URL sitemap was previously a fresh lambda
@@ -55,13 +57,51 @@ type Props = {
   params: Promise<{ slug: string }>;
 };
 
+/** Search-snippet description: front-load what someone googling the question
+ *  actually wants (odds, live value, distance, deadline) before the rules
+ *  prose. Week-1 analytics showed market pages rank for question-shaped
+ *  queries — the snippet is the ad. Google truncates ~160 chars, so the
+ *  numbers go first and the rules tail is free to be cut. */
+function metaDescription(row: NonNullable<Awaited<ReturnType<typeof getMarketBySlug>>>): string {
+  const bits: string[] = [];
+  if (row.impliedYes != null && isFinite(row.impliedYes)) {
+    bits.push(`Market odds: ${Math.round(row.impliedYes * 100)}% YES`);
+  }
+  if (
+    row.liveState === "live" &&
+    !row.alreadyTriggered &&
+    row.currentValue != null &&
+    row.thresholdValue != null &&
+    row.distancePct != null &&
+    isFinite(row.distancePct)
+  ) {
+    const pct = Math.abs(row.distancePct) * 100;
+    bits.push(
+      `${fmtCompactUSD(row.currentValue)} now, ${pct.toFixed(pct > 100 ? 0 : 1)}% from the ${fmtCompactUSD(row.thresholdValue)} trigger`,
+    );
+  } else if (row.alreadyTriggered) {
+    bits.push("trigger already hit");
+  }
+  if (row.endDate) {
+    const end = new Date(row.endDate);
+    if (isFinite(end.getTime())) {
+      bits.push(
+        `resolves by ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`,
+      );
+    }
+  }
+  const head = bits.join(" · ");
+  const rules = summarizeRules(row);
+  return head ? `${head}. ${rules}` : rules;
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const row = await getMarketBySlug(slug);
   if (!row) return { title: "Market not found · Auspex" };
   return {
     title: `${row.question} · Auspex`,
-    description: summarizeRules(row),
+    description: metaDescription(row),
     // row.slug (not the request param) so drifted/legacy slugs that resolve
     // via the base-slug fallback canonicalise to the current URL.
     alternates: { canonical: `/markets/${row.slug}` },
@@ -119,6 +159,10 @@ export default async function MarketDetailPage({ params }: Props) {
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {/* No-wallet retention hooks, in the order a search visitor can
+                  use them: star it (watchlist), arm a near-trigger alert,
+                  share. Week-1: search visitors bounced with nothing to keep. */}
+              <StarToggle marketId={row.id} />
               <TriggerAlertButton
                 marketId={row.id}
                 slug={row.slug}
@@ -127,7 +171,7 @@ export default async function MarketDetailPage({ params }: Props) {
               />
               <ShareButtons
                 text={buildShareText(row)}
-                url={`${process.env.NEXT_PUBLIC_SITE_URL ?? "https://auspex.to"}/markets/${row.slug}`}
+                url={`${SITE_URL}/markets/${row.slug}`}
                 slug={row.slug}
               />
             </div>
