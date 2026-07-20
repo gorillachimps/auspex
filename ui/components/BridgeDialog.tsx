@@ -458,10 +458,26 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
             <span className="text-[12px] font-medium text-muted">USDC</span>
           </div>
           {insufficient ? (
-            <p className="mt-1.5 text-[11px] text-rose-300">
-              Insufficient balance on{" "}
-              {SOURCE_CHAINS.find((c) => c.id === fromChainId)?.name}.
-            </p>
+            <div className="mt-1.5 space-y-1">
+              <p className="text-[11px] text-rose-300">
+                Insufficient USDC on{" "}
+                {SOURCE_CHAINS.find((c) => c.id === fromChainId)?.name}.
+              </p>
+              {/* The in-app widget is USDC-only (Across same-asset route). For
+                  everything else, hand off to Jumper, which swaps any token
+                  into USDC on the account. Recipient pre-fill stays gated on
+                  the deployment check, same as the footer link. */}
+              <p className="text-[11px] text-muted">
+                Holding ETH, USDT or another token instead?{" "}
+                <BridgeButton
+                  toAddress={
+                    recipientDeployed === true ? (toAddress ?? undefined) : undefined
+                  }
+                  variant="inline"
+                  label="Pay with any token via Jumper"
+                />
+              </p>
+            </div>
           ) : null}
         </div>
 
@@ -595,7 +611,7 @@ export function BridgeDialog({ open, eoa, toAddress, onClose }: Props) {
 
         <div className="mt-5 flex items-center justify-between gap-2">
           <div className="text-[11px] text-muted-2">
-            Need BSC or another route?{" "}
+            Paying with ETH, USDT, or from BSC?{" "}
             {/* Pre-fill the recipient ONLY once it's confirmed deployed — same
                 gate as the in-app submit. Otherwise the escape-hatch link would
                 hand an unverified (possibly undeployed) address straight to

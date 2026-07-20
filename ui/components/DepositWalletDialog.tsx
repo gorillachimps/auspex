@@ -494,8 +494,8 @@ export function DepositWalletDialog({
                       : "Need USDC to trade?"}
                   </div>
                   <div className="mt-0.5 text-muted-2">
-                    Add funds from any chain to get started — betting itself is
-                    gas-free.
+                    Add funds from any chain — pay in USDC, ETH, USDT or any
+                    token; it arrives as USDC. Betting itself is gas-free.
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-stretch gap-1.5">
