@@ -69,3 +69,10 @@ jobs:
           git add data/snapshot-meta.json
           git commit -m "data: full rebuild ($(date -u +%Y-%m-%d\ %H:%MZ))"
           git push
+
+      # Tell Bing/Yandex (IndexNow) about newly listed markets. Best-effort:
+      # the script exits 0 on every failure path, and continue-on-error is
+      # belt-and-braces — an indexing ping must never fail the data pipeline.
+      - name: IndexNow ping (new markets)
+        continue-on-error: true
+        run: python indexnow_ping.py --diff-head
