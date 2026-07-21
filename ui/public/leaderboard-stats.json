@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-21T13:08:08.320Z",
+  "generatedAt": "2026-07-21T18:59:39.794Z",
   "count": 42,
   "stats": {
     "0x56687bf447db6ffa42ffe2204a05edaa20f55839": {
@@ -100,7 +100,7 @@
     },
     "0xf0318c32136c2db7fec88b84869aee6a1106c80c": {
       "winRate": 0,
-      "closedCount": 1422,
+      "closedCount": 1369,
       "realized30d": 0,
       "realizedTotal": 0
     },
