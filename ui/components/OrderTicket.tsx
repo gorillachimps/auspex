@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X, Loader2, AlertTriangle } from "lucide-react";
+import { X, Loader2, AlertTriangle, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { useClobSession } from "@/lib/useClobSession";
 import { useBalanceAllowance, fmtCollateral } from "@/lib/useBalanceAllowance";
@@ -14,7 +14,7 @@ import {
   updateAllowance,
 } from "@/lib/polymarket";
 import { useFocusTrap } from "@/lib/useFocusTrap";
-import { useLiveBook } from "@/lib/useLiveMarket";
+import { useLiveBook, type LiveBook } from "@/lib/useLiveMarket";
 import { estimateMarketFill, type FillEstimate } from "@/lib/orderBook";
 import { track } from "@/lib/track";
 import { cn } from "@/lib/cn";
@@ -82,6 +82,8 @@ export function OrderTicket({
   // surface a confirmation banner with the expected avg price and
   // slippage before actually placing. They have to click again to send.
   const [confirmingLargeMarket, setConfirmingLargeMarket] = useState(false);
+  // In-ticket order book, collapsed by default (depth on demand, no scroll tax).
+  const [bookOpen, setBookOpen] = useState(false);
   const LARGE_MARKET_USD = 100;
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -605,6 +607,21 @@ export function OrderTicket({
         </div>
 
         <OrderModeToggle value={orderMode} onChange={setOrderMode} />
+
+        {/* Live depth for the SELECTED outcome, from the subscription this
+            ticket already holds for bid/ask — no extra WS/network cost.
+            Clicking a level trades at it: sets the limit price (switching a
+            market order to limit, since market has no price to set). */}
+        <TicketBook
+          book={liveBook}
+          outcome={outcome}
+          open={bookOpen}
+          onToggle={() => setBookOpen((v) => !v)}
+          onPickPrice={(p) => {
+            setPriceStr(snapToTick(p, tickNumeric).toFixed(decimalsForTick(tickNumeric)));
+            if (orderMode !== "limit") setOrderMode("limit");
+          }}
+        />
 
         {orderMode === "limit" ? (
           <>
@@ -1142,6 +1159,132 @@ function decimalsForTick(t: number): number {
 
 function snapToTick(p: number, tick: number): number {
   return Math.round(p / tick) * tick;
+}
+
+/** Compact shares formatter for book levels — "9.1k" / "924" / "5.68". */
+function fmtBookSize(n: number): string {
+  if (!isFinite(n)) return "—";
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  if (n >= 100) return n.toFixed(0);
+  return n.toFixed(2);
+}
+
+/** Collapsible live order book inside the ticket, for the selected outcome's
+ *  token. Renders from the ticket's existing useLiveBook subscription. Rows
+ *  are buttons: clicking a level hands its price to the caller (click-to-set
+ *  limit price). Depth bars are scaled per column to the largest shown level. */
+function TicketBook({
+  book,
+  outcome,
+  open,
+  onToggle,
+  onPickPrice,
+}: {
+  book: LiveBook | null;
+  outcome: Outcome;
+  open: boolean;
+  onToggle: () => void;
+  onPickPrice: (p: number) => void;
+}) {
+  const LEVELS = 6;
+  const bids = (book?.bids ?? [])
+    .map((l) => ({ price: Number(l.price), size: Number(l.size) }))
+    .filter((l) => isFinite(l.price) && isFinite(l.size))
+    .sort((a, b) => b.price - a.price)
+    .slice(0, LEVELS);
+  const asks = (book?.asks ?? [])
+    .map((l) => ({ price: Number(l.price), size: Number(l.size) }))
+    .filter((l) => isFinite(l.price) && isFinite(l.size))
+    .sort((a, b) => a.price - b.price)
+    .slice(0, LEVELS);
+
+  const Col = ({
+    levels,
+    tone,
+    label,
+  }: {
+    levels: Array<{ price: number; size: number }>;
+    tone: "emerald" | "rose";
+    label: string;
+  }) => {
+    const max = Math.max(...levels.map((l) => l.size), 1);
+    const barClass =
+      tone === "emerald" ? "bg-emerald-500/15" : "bg-rose-500/15";
+    const priceClass = tone === "emerald" ? "text-emerald-300" : "text-rose-300";
+    return (
+      <div>
+        <div className="mb-1 flex justify-between text-[10px] uppercase tracking-wider text-muted-2">
+          <span>{label}</span>
+          <span>Size</span>
+        </div>
+        <div className="space-y-px">
+          {levels.length === 0 ? (
+            <div className="py-1 text-[11px] text-muted-2">Empty</div>
+          ) : (
+            levels.map((l) => (
+              <button
+                key={l.price}
+                type="button"
+                onClick={() => onPickPrice(l.price)}
+                title={`Set limit price ${l.price}`}
+                className="relative flex w-full items-center justify-between rounded-sm px-1.5 py-0.5 text-[11px] hover:bg-surface-2"
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn("absolute inset-y-0 left-0 rounded-sm", barClass)}
+                  style={{ width: `${Math.min(100, (l.size / max) * 100)}%` }}
+                />
+                <span className={cn("relative tabular font-medium", priceClass)}>
+                  {l.price}
+                </span>
+                <span className="relative tabular text-muted">
+                  {fmtBookSize(l.size)}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="mt-3 rounded-md border border-border bg-surface/40">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between px-3 py-2 text-[11px] font-medium text-muted hover:text-foreground"
+      >
+        <span>
+          Order book · {outcome.toUpperCase()}
+        </span>
+        <ChevronDown
+          className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")}
+          aria-hidden="true"
+        />
+      </button>
+      {open ? (
+        <div className="border-t border-border/70 px-3 py-2">
+          {book == null ? (
+            <div className="py-1 text-[11px] text-muted-2">
+              Loading the live book…
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <Col levels={bids} tone="emerald" label="Bids" />
+                <Col levels={asks} tone="rose" label="Asks" />
+              </div>
+              <p className="mt-1.5 text-[10px] text-muted-2">
+                Tap a level to set it as your limit price.
+              </p>
+            </>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function PriceQuickRow({
