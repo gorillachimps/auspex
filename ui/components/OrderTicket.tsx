@@ -82,8 +82,19 @@ export function OrderTicket({
   // surface a confirmation banner with the expected avg price and
   // slippage before actually placing. They have to click again to send.
   const [confirmingLargeMarket, setConfirmingLargeMarket] = useState(false);
-  // In-ticket order book, collapsed by default (depth on demand, no scroll tax).
-  const [bookOpen, setBookOpen] = useState(false);
+  // In-ticket order book. Default follows the order mode — limit traders are
+  // placing a price against the book, so it's open in Limit and collapsed in
+  // Market — but an explicit user toggle (bookPref) overrides the default for
+  // the rest of this ticket session. Reset to default whenever the ticket
+  // (re)opens.
+  const [bookPref, setBookPref] = useState<boolean | null>(null);
+  const bookOpen = bookPref ?? orderMode === "limit";
+  // Reset per ticket IDENTITY, not just per open-flip: the screener keeps one
+  // ticket mounted, so reopening on another market doesn't always toggle
+  // `open` — without the id dep, a manual collapse leaked into the next market.
+  useEffect(() => {
+    if (open) setBookPref(null);
+  }, [open, market?.id]);
   const LARGE_MARKET_USD = 100;
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -616,7 +627,7 @@ export function OrderTicket({
           book={liveBook}
           outcome={outcome}
           open={bookOpen}
-          onToggle={() => setBookOpen((v) => !v)}
+          onToggle={() => setBookPref(!bookOpen)}
           onPickPrice={(p) => {
             setPriceStr(snapToTick(p, tickNumeric).toFixed(decimalsForTick(tickNumeric)));
             if (orderMode !== "limit") setOrderMode("limit");
