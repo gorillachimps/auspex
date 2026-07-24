@@ -21,7 +21,8 @@ import { TriggerAlertButton } from "@/components/TriggerAlertButton";
 import { DisqusComments } from "@/components/DisqusComments";
 import { TopHolders } from "@/components/TopHolders";
 import { cn } from "@/lib/cn";
-import { getMarketBySlug } from "@/lib/data";
+import { getMarketBySlug, getMarkets } from "@/lib/data";
+import type { TableRow } from "@/lib/types";
 import { getLivePrices } from "@/lib/livePrices";
 import { applyLivePrices } from "@/lib/liveOverlay";
 import {
@@ -109,6 +110,34 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
+/** Live siblings for the related-markets block: same trading pair first (the
+ *  "ETH $2,200 / $1,900 / dip" family a searcher is actually comparing), then
+ *  same family, volume-ranked. Excludes the current market and anything whose
+ *  close date has passed. This is the exit ramp for search visitors — half of
+ *  week-2 traffic landed on ONE month-bound market page, and when such a
+ *  market resolves its successor inherits visitors (and internal link equity)
+ *  through this block. */
+function pickRelated(all: TableRow[], current: TableRow, n = 5): TableRow[] {
+  const live = all.filter(
+    (r) =>
+      r.id !== current.id &&
+      r.liveState === "live" &&
+      urgencyForEnd(r.endDate) !== "ended",
+  );
+  const byVol = (a: TableRow, b: TableRow) => b.volume24h - a.volume24h;
+  const samePair = current.pair
+    ? live.filter((r) => r.pair === current.pair).sort(byVol)
+    : [];
+  const sameFamily = live
+    .filter(
+      (r) =>
+        r.family === current.family &&
+        (!current.pair || r.pair !== current.pair),
+    )
+    .sort(byVol);
+  return [...samePair, ...sameFamily].slice(0, n);
+}
+
 export default async function MarketDetailPage({ params }: Props) {
   const { slug } = await params;
   const snapshotRow = await getMarketBySlug(slug);
@@ -119,6 +148,10 @@ export default async function MarketDetailPage({ params }: Props) {
   const row = live
     ? applyLivePrices([snapshotRow], live.prices).rows[0]
     : snapshotRow;
+  // Same load() snapshot as getMarketBySlug — no extra I/O; ISR-cached with
+  // the page.
+  const related = pickRelated(await getMarkets(), row);
+  const rowEnded = urgencyForEnd(row.endDate) === "ended";
 
   const meta = familyMeta(row.family);
   const tone = FAMILY_TONE_CLASSES[meta.tone];
@@ -344,6 +377,44 @@ export default async function MarketDetailPage({ params }: Props) {
               <ChangeStat label="30d" value={row.oneMonthChange} />
             </div>
           </div>
+
+          {related.length > 0 ? (
+            <Card
+              title={
+                rowEnded
+                  ? "This market has closed — live related markets"
+                  : "Related live markets"
+              }
+              className="mt-6"
+            >
+              <ul className="divide-y divide-border/60">
+                {related.map((r) => (
+                  <li key={r.id}>
+                    <a
+                      href={`/markets/${r.slug}`}
+                      className="flex items-center justify-between gap-3 py-2 text-sm hover:text-accent"
+                    >
+                      <span className="min-w-0 truncate text-foreground/90">
+                        {r.question}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-3 text-[12px] tabular">
+                        <span className="text-muted">
+                          {r.impliedYes != null
+                            ? `YES ${fmtImpliedPct(r.impliedYes)}`
+                            : "—"}
+                        </span>
+                        {r.distancePct != null && isFinite(r.distancePct) && !r.alreadyTriggered ? (
+                          <span className="text-muted-2">
+                            {`${Math.abs(r.distancePct * 100).toFixed(Math.abs(r.distancePct * 100) > 100 ? 0 : 1)}% to go`}
+                          </span>
+                        ) : null}
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
 
           <div className="mt-6">
             <DisqusComments
