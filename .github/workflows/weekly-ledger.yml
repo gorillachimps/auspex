@@ -1,0 +1,61 @@
+name: weekly-ledger
+
+# Appends one attribution row to LEDGER.md every Monday — the longevity record
+# for the builder-program review. Reads only the public CLOB builder/trades
+# endpoint (stdlib urllib; no deps, no secrets).
+
+on:
+  schedule:
+    - cron: "0 9 * * 1" # Mondays 09:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  # Shared with the data workflows so main-writers serialize instead of racing
+  # on `git push`.
+  group: auspex-main-writer
+  cancel-in-progress: false
+
+jobs:
+  ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Append this week's row
+        run: |
+          ROW="$(python3 builder_stats.py | grep -E '^\| 20' | head -1)"
+          if [ -z "$ROW" ]; then
+            echo "No ledger row produced — endpoint down or format changed."
+            exit 1
+          fi
+          WEEK="$(echo "$ROW" | awk -F'|' '{print $2}' | tr -d ' ')"
+          if grep -q "| $WEEK |" LEDGER.md; then
+            echo "Row for $WEEK already recorded — exiting clean."
+            exit 0
+          fi
+          echo "$ROW" >> LEDGER.md
+          echo "Appended: $ROW"
+
+      - name: Commit if changed
+        run: |
+          git config user.name "auspex-bot"
+          # Repo owner's noreply so Vercel accepts the auto-deploy this commit
+          # triggers (same convention as the data workflows).
+          git config user.email "96061296+gorillachimps@users.noreply.github.com"
+          git add LEDGER.md
+          if git diff --cached --quiet; then
+            echo "No changes — exiting clean."
+            exit 0
+          fi
+          git commit -m "ledger: weekly attribution row ($(date -u +%Y-%m-%d))"
+          git push
