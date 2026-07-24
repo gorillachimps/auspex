@@ -20,9 +20,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ]);
   const lastModified = new Date(snapshot.snapshotAt);
 
-  const ranked = [...markets].sort(
-    (a, b) => (b.volume_total ?? 0) - (a.volume_total ?? 0),
-  );
+  // GSC week-1 evidence (2026-07-24 export): the queries we RANK for are
+  // due-diligence searches — "will <token> launch a token…" hit position 1.5,
+  // "<token>" DD queries and fdv/public-sale pages rank 4–10 — and the winning
+  // markets often have near-ZERO volume ($0–$40), so a pure top-N-by-volume
+  // sitemap silently drops the exact pages search rewards. Guarantee the DD
+  // families first; fill the rest by volume up to the cap.
+  const isDD = (m: (typeof markets)[number]) =>
+    m.family === "fdv_after_launch" ||
+    m.family === "public_sale" ||
+    (m.slug ?? "").includes("launch-a-token");
+  const byVolume = (a: (typeof markets)[number], b: (typeof markets)[number]) =>
+    (b.volume_total ?? 0) - (a.volume_total ?? 0);
+  const guaranteed = markets.filter(isDD).sort(byVolume);
+  const rest = markets.filter((m) => !isDD(m)).sort(byVolume);
+  const ranked = [...guaranteed, ...rest];
 
   const pages: MetadataRoute.Sitemap = [
     {
