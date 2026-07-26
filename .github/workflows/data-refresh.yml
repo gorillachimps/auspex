@@ -1,13 +1,20 @@
 name: data-refresh
 
-# Re-runs the price-enrichment step (~1s) so the snapshot age stays under the
-# /api/health 6-hour staleness threshold. Cheap; runs every 15 minutes.
+# Re-runs the price-enrichment step (~1s) to refresh snapshot odds/volumes.
+#
+# Cadence history: 15 min → every 2 h (2026-07-26, Fluid-CPU cap). Every data
+# commit triggers a Vercel deploy, and each deploy resets the ISR cache for
+# ~2,500 crawl-promoted pages — at ~23 deploys/day, crawler re-renders were
+# the dominant CPU burn. Live PRICES don't depend on this workflow (they come
+# from Binance per-request via lib/livePrices + client polling); this refresh
+# only ages implied odds/volumes, which the UI labels with an honest
+# snapshot-age chip.
 #
 # To rebuild the full dataset (pick up new markets), see data-rebuild.yml.
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "37 */2 * * *"
   workflow_dispatch: {} # manual trigger from the Actions tab
 
 permissions:

@@ -143,7 +143,8 @@ export default function DocsPage() {
             <ul className="space-y-1 text-sm">
               <li>
                 <strong className="text-foreground">Markets, odds, order books</strong>:
-                Polymarket — pulled fresh every 15 minutes.
+                Polymarket — snapshot refreshed every couple of hours, with live
+                prices overlaid on top per-request.
               </li>
               <li>
                 <strong className="text-foreground">Crypto prices</strong>:

@@ -25,7 +25,7 @@ export default function ApiDocsPage() {
           <Endpoint
             method="GET"
             path="/api/markets"
-            description="All crypto-vertical Polymarket markets, sorted by 24-hour volume descending. Refreshed every 15 minutes by a cron pipeline and cached at the edge for 60 s."
+            description="All crypto-vertical Polymarket markets, sorted by 24-hour volume descending. Snapshot refreshed every ~2 hours by a cron pipeline (live prices are overlaid per-request) and cached at the edge for 60 s."
             params={[
               {
                 name: "family",
@@ -150,7 +150,7 @@ export default function ApiDocsPage() {
           <Endpoint
             method="GET"
             path="/api/health"
-            description="Liveness probe. Reports whether the snapshot file is loadable and how stale it is. Anything over 900 s (15 min) of snapshotAgeSeconds indicates the cron pipeline has fallen behind."
+            description="Liveness probe. Reports whether the snapshot file is loadable and how stale it is. Anything over 21600 s (6 h) of snapshotAgeSeconds indicates the cron pipeline has fallen behind (the endpoint returns 503 past that threshold)."
             params={[]}
             curl={`curl -s 'https://auspex.to/api/health' | python3 -m json.tool`}
             sample={`{
@@ -164,7 +164,7 @@ export default function ApiDocsPage() {
 
           <Section title="Caching + freshness">
             <p>
-              Markets data is rebuilt server-side every 15 minutes by a GitHub
+              Markets data is refreshed server-side every ~2 hours by a GitHub
               Actions cron (see{" "}
               <code className="font-mono text-[12px]">
                 .github/workflows/data-refresh.yml

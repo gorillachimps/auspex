@@ -36,11 +36,13 @@ async function fetchAllTickers(): Promise<LivePrices | null> {
       // next.revalidate (NOT cache:"no-store"): a no-store fetch forces every
       // route that overlays live prices (home, market pages) into per-request
       // dynamic rendering, defeating their ISR and burning a lambda render per
-      // crawler hit. A 25 s data-cache window sits just under this module's own
-      // 30 s TTL; worst case the "prices Xs ago" pill under-reports age by
-      // ≤25 s on the SSR paint, which the client's own polling replaces anyway.
+      // crawler hit. This fetch's revalidate also becomes the EFFECTIVE ISR
+      // TTL of those routes (Next takes the minimum), so it doubles as the
+      // page-recompute throttle: 120 s keeps crawler-driven re-renders ~5×
+      // rarer than the original 25 s (Fluid-CPU cap, 2026-07-26) while the
+      // client's own polling repaints real users within seconds of mount.
       const r = await fetch(host, {
-        next: { revalidate: 25 },
+        next: { revalidate: 120 },
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (!r.ok) continue;
