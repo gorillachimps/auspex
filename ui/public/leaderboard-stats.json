@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-07-27T14:03:58.126Z",
-  "count": 60,
+  "generatedAt": "2026-07-27T19:05:29.742Z",
+  "count": 47,
   "stats": {
-    "0x56687bf447db6ffa42ffe2204a05edaa20f55839": {
+    "0x204f72f35326db932158cba6adff0b9a1da95e14": {
       "winRate": null,
       "closedCount": 0,
       "realized30d": 0,
       "realizedTotal": 0
     },
-    "0x204f72f35326db932158cba6adff0b9a1da95e14": {
+    "0x56687bf447db6ffa42ffe2204a05edaa20f55839": {
       "winRate": null,
       "closedCount": 0,
       "realized30d": 0,
@@ -134,6 +134,12 @@
       "realized30d": 0,
       "realizedTotal": 0
     },
+    "0xc2e7800b5af46e6093872b177b7a5e7f0563be51": {
+      "winRate": 0,
+      "closedCount": 4,
+      "realized30d": 0,
+      "realizedTotal": -3722
+    },
     "0xe90bec87d9ef430f27f9dcfe72c34b76967d5da2": {
       "winRate": 1,
       "closedCount": 4,
@@ -151,12 +157,6 @@
       "closedCount": 806,
       "realized30d": 1935,
       "realizedTotal": 171644
-    },
-    "0xc2e7800b5af46e6093872b177b7a5e7f0563be51": {
-      "winRate": 0,
-      "closedCount": 4,
-      "realized30d": 0,
-      "realizedTotal": -3722
     },
     "0xdc876e6873772d38716fda7f2452a78d426d7ab6": {
       "winRate": null,
@@ -261,8 +261,8 @@
       "realizedTotal": 118
     },
     "0x9d84ce0306f8551e02efef1680475fc0f1dc1344": {
-      "winRate": 0.20557491289198607,
-      "closedCount": 287,
+      "winRate": 0.19032258064516128,
+      "closedCount": 310,
       "realized30d": 12665,
       "realizedTotal": 12665
     },
@@ -271,12 +271,6 @@
       "closedCount": 483,
       "realized30d": 0,
       "realizedTotal": 12599
-    },
-    "0xed2239a9150c3920000d0094d28fa51c7db03dd0": {
-      "winRate": null,
-      "closedCount": 0,
-      "realized30d": 0,
-      "realizedTotal": 0
     },
     "0x17db3fcd93ba12d38382a0cade24b200185c5f6d": {
       "winRate": 0.02973977695167286,
@@ -289,78 +283,6 @@
       "closedCount": 244,
       "realized30d": -292,
       "realizedTotal": -292
-    },
-    "0x36a3f17401e395ef4cb1b7f42bcdb8ab8e15fafb": {
-      "winRate": null,
-      "closedCount": 0,
-      "realized30d": 0,
-      "realizedTotal": 0
-    },
-    "0xc8ab97a9089a9ff7e6ef0688e6e591a066946418": {
-      "winRate": 0.20671563483735572,
-      "closedCount": 953,
-      "realized30d": 572,
-      "realizedTotal": 572
-    },
-    "0x2663daca3cecf3767ca1c3b126002a8578a8ed1f": {
-      "winRate": 0.023411371237458192,
-      "closedCount": 2392,
-      "realized30d": 1,
-      "realizedTotal": 1
-    },
-    "0x2d27e4d20f3b8a2ee3bc861d9b83752f338676d8": {
-      "winRate": 0.23362658846529813,
-      "closedCount": 2046,
-      "realized30d": 20,
-      "realizedTotal": 20
-    },
-    "0xfc25f141ed27bb1787338d2c4e7f51e3a15e1f7f": {
-      "winRate": 0.3333333333333333,
-      "closedCount": 6,
-      "realized30d": -3,
-      "realizedTotal": -3
-    },
-    "0x6d3c5bd13984b2de47c3a88ddc455309aab3d294": {
-      "winRate": 0.6998769987699877,
-      "closedCount": 813,
-      "realized30d": 214,
-      "realizedTotal": 214
-    },
-    "0x07e78f5f58f8fa839f298cfe3fefd258883aa343": {
-      "winRate": 0.324791800128123,
-      "closedCount": 1561,
-      "realized30d": 0,
-      "realizedTotal": 95
-    },
-    "0x55b4af6a1cff148a307cad8ad098206a028e80ea": {
-      "winRate": 0.1921424186617557,
-      "closedCount": 1629,
-      "realized30d": 0,
-      "realizedTotal": 854
-    },
-    "0x751a2b86cab503496efd325c8344e10159349ea1": {
-      "winRate": 0.8681818181818182,
-      "closedCount": 220,
-      "realized30d": 1860,
-      "realizedTotal": 1860
-    },
-    "0x4133bcbad1d9c41de776646696f41c34d0a65e70": {
-      "winRate": null,
-      "closedCount": 0,
-      "realized30d": 0,
-      "realizedTotal": 0
-    },
-    "0x4ce73141dbfce41e65db3723e31059a730f0abad": {
-      "winRate": 0,
-      "closedCount": 2500,
-      "realized30d": 0,
-      "realizedTotal": 0
-    },
-    "0x4ffe49ba2a4cae123536a8af4fda48faeb609f71": {
-      "winRate": 0.6672661870503597,
-      "closedCount": 1112,
-      "realized30d": 361,
-      "realizedTotal": 361
     }
   }
 }
