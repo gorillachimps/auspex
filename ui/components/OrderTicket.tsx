@@ -242,6 +242,16 @@ export function OrderTicket({
   const sellCap =
     maxShares != null ? Math.floor(maxShares * 100) / 100 : undefined;
 
+  // BUY-side Max: the whole spendable collateral balance. `allowance.balance`
+  // is pUSD in 6-decimal base units on the buy path (on SELL it's the
+  // conditional token, which has its own Max in SellSizeInput — hence the
+  // side guard). Floored to whole cents so the value we put in the field can
+  // never exceed the on-chain balance through rounding.
+  const buyMaxUsd =
+    side === "buy" && allowance.balance != null
+      ? Math.floor(Number(allowance.balance) / 10_000) / 100
+      : undefined;
+
   // LIMIT-order projection
   // BUY: user types USD, shares = USD / price.
   // SELL: user types shares, USD = shares * price.
@@ -664,7 +674,10 @@ export function OrderTicket({
             </div>
 
             {side === "buy" ? (
-              <QuickSizeRow onPick={(usd) => setSizeStr(String(usd))} />
+              <QuickSizeRow
+                onPick={(usd) => setSizeStr(String(usd))}
+                maxUsd={buyMaxUsd}
+              />
             ) : null}
 
             <PriceQuickRow
@@ -730,7 +743,10 @@ export function OrderTicket({
                 />
               )}
               {side === "buy" ? (
-                <QuickSizeRow onPick={(usd) => setSizeStr(String(usd))} />
+                <QuickSizeRow
+                onPick={(usd) => setSizeStr(String(usd))}
+                maxUsd={buyMaxUsd}
+              />
               ) : null}
             </div>
 
@@ -1346,10 +1362,18 @@ function PriceQuickRow({
 /** Preset USD amounts users can click to fill the size input instead of
  *  typing. Same visual treatment as PriceQuickRow above so the two rows
  *  look like sibling affordances under their inputs. */
-function QuickSizeRow({ onPick }: { onPick: (usd: number) => void }) {
+function QuickSizeRow({
+  onPick,
+  maxUsd,
+}: {
+  onPick: (usd: number) => void;
+  /** Spendable collateral in dollars, already floored to cents. Renders a Max
+   *  button; omitted (or 0) while the balance is unknown/empty. */
+  maxUsd?: number;
+}) {
   const presets: number[] = [10, 50, 100, 500];
   return (
-    <div className="mt-2 flex items-center gap-1.5">
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
       <span className="text-[10px] uppercase tracking-wider text-muted-2">
         Quick
       </span>
@@ -1357,13 +1381,28 @@ function QuickSizeRow({ onPick }: { onPick: (usd: number) => void }) {
         <button
           key={usd}
           type="button"
+          disabled={maxUsd != null && usd > maxUsd}
           onClick={() => onPick(usd)}
-          className="inline-flex items-center rounded-md border border-border-strong bg-surface px-2 py-0.5 text-[11px] font-medium text-muted hover:bg-surface-2 hover:text-foreground"
-          title={`Set size to $${usd}`}
+          className="inline-flex items-center rounded-md border border-border-strong bg-surface px-2 py-0.5 text-[11px] font-medium text-muted hover:bg-surface-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          title={
+            maxUsd != null && usd > maxUsd
+              ? `More than your $${maxUsd.toFixed(2)} balance`
+              : `Set size to $${usd}`
+          }
         >
           ${usd}
         </button>
       ))}
+      {maxUsd != null && maxUsd > 0 ? (
+        <button
+          type="button"
+          onClick={() => onPick(maxUsd)}
+          className="inline-flex items-center rounded-md bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-accent hover:bg-accent/15"
+          title={`Spend your full $${maxUsd.toFixed(2)} balance`}
+        >
+          Max ${maxUsd.toFixed(2)}
+        </button>
+      ) : null}
     </div>
   );
 }
