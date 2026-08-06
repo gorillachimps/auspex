@@ -13,9 +13,14 @@ permissions:
   contents: write
 
 concurrency:
-  # Shared with the data workflows so main-writers serialize instead of racing
-  # on `git push`.
-  group: auspex-main-writer
+  # Deliberately NOT in the shared `auspex-main-writer` group. GitHub keeps only
+  # ONE pending run per group, so a newer queued run cancels the older one — with
+  # the high-frequency data workflows in the same group, a delayed ledger run can
+  # be starved and silently skip a week (observed: a data-refresh run cancelled
+  # this way on 2026-08-06). Data misses self-heal on the next tick; a missed
+  # ledger row is a permanent hole in the longevity record. Own group + the
+  # rebase-and-retry push below make racing safe without sharing the queue.
+  group: auspex-ledger
   cancel-in-progress: false
 
 jobs:
@@ -58,4 +63,19 @@ jobs:
             exit 0
           fi
           git commit -m "ledger: weekly attribution row ($(date -u +%Y-%m-%d))"
-          git push
+          # Now that this workflow has its own concurrency group, a data
+          # workflow can push between our checkout and our push. Rebase and
+          # retry instead of failing (and losing the week's row). The rebase is
+          # trivially safe: our commit only appends one line to LEDGER.md, which
+          # no other workflow writes.
+          for attempt in 1 2 3 4 5; do
+            if git push; then
+              echo "Pushed on attempt $attempt."
+              exit 0
+            fi
+            echo "Push rejected (attempt $attempt) — rebasing onto origin/main."
+            git pull --rebase origin main || exit 1
+            sleep $((attempt * 5))
+          done
+          echo "Could not push the ledger row after 5 attempts."
+          exit 1
