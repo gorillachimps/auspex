@@ -4,7 +4,10 @@ import { getLivePrices } from "@/lib/livePrices";
 
 export const dynamic = "force-dynamic";
 
-const STALE_AFTER_MS = 6 * 60 * 60 * 1000; // 6 hours
+// 12 h: the refresh cron runs every 4 h and GitHub's scheduler drifts/skips
+// under load, so a 6 h alarm produced false positives. This threshold still
+// catches a genuinely dead pipeline (3 consecutive misses).
+const STALE_AFTER_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 export async function GET() {
   const startedAt = Date.now();

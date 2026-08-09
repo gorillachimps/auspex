@@ -5,12 +5,16 @@ name: data-rebuild
 #   2. parse_rules.py        — structure rules text into families
 #   3. enrich_state.py       — query Binance for live prices, compute RC
 #
-# Heavy: ~5 minutes. Runs every 6 hours to pick up new markets. The
-# 15-minute data-refresh workflow handles price-only updates between rebuilds.
+# Heavy: ~5 minutes. Runs every 12 hours to pick up new markets; the
+# data-refresh workflow handles price-only updates between rebuilds.
+#
+# Cadence history: 6 h -> 12 h (2026-08-06). Every data commit redeploys, and
+# every deploy invalidates the ISR cache for ~2,500 crawl-promoted pages, which
+# crawlers then re-render — deploy frequency is the master cost variable.
 
 on:
   schedule:
-    - cron: "7 */6 * * *" # offset from data-refresh to avoid contention
+    - cron: "7 */12 * * *" # offset from data-refresh to avoid contention
   workflow_dispatch: {}
 
 permissions:

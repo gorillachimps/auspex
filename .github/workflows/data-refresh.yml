@@ -2,7 +2,8 @@ name: data-refresh
 
 # Re-runs the price-enrichment step (~1s) to refresh snapshot odds/volumes.
 #
-# Cadence history: 15 min → every 2 h (2026-07-26, Fluid-CPU cap). Every data
+# Cadence history: 15 min → 2 h (2026-07-26, Fluid-CPU cap) → 4 h (2026-08-06,
+# Pro credit burn). Every data
 # commit triggers a Vercel deploy, and each deploy resets the ISR cache for
 # ~2,500 crawl-promoted pages — at ~23 deploys/day, crawler re-renders were
 # the dominant CPU burn. Live PRICES don't depend on this workflow (they come
@@ -14,7 +15,7 @@ name: data-refresh
 
 on:
   schedule:
-    - cron: "37 */2 * * *"
+    - cron: "37 */4 * * *"
   workflow_dispatch: {} # manual trigger from the Actions tab
 
 permissions:
