@@ -42,16 +42,56 @@ async function resolveDataPath(): Promise<string> {
   );
 }
 
-type Loaded = {
-  rows: TableRow[];
-  raw: EnrichedMarket[];
-  snapshotAt: string;
-};
+// ---------------------------------------------------------------------------
+// Snapshot sourcing: fetch first, disk as fallback.
+//
+// The pipeline commits a fresh snapshot every few hours. Each of those commits
+// used to trigger a Vercel rebuild — ~21 CPU-minutes producing byte-identical
+// CODE, which was 87% of the August bill ($15.06 of $17.35). Production now
+// reads the snapshot over HTTPS from the repo's raw endpoint, so data freshness
+// is decoupled from deploys and data-only commits skip the build entirely
+// (see ui/vercel.json's ignoreCommand).
+//
+// The on-disk copy (synced into ./data by the `prebuild` script) stays as the
+// fallback: if the fetch fails, we serve the last-built snapshot rather than
+// erroring. It may be older, which the snapshot-age chip reports honestly.
+const REMOTE_BASE =
+  process.env.SNAPSHOT_BASE_URL ??
+  "https://raw.githubusercontent.com/gorillachimps/auspex/main/data";
+const REMOTE_TIMEOUT_MS = 8_000;
+// Doubles as the Next data-cache window for the fetch AND this module's
+// in-process TTL. The in-process cache used to be effectively permanent because
+// a deploy (and thus a fresh lambda) was the only way data ever changed; with
+// deploys now rare, a warm instance has to expire its own copy.
+const SNAPSHOT_TTL_S = 300;
 
-let cached: Loaded | null = null;
+async function fetchRemote(name: string): Promise<string | null> {
+  try {
+    const r = await fetch(`${REMOTE_BASE}/${name}`, {
+      next: { revalidate: SNAPSHOT_TTL_S },
+      signal: AbortSignal.timeout(REMOTE_TIMEOUT_MS),
+    });
+    if (!r.ok) return null;
+    return await r.text();
+  } catch {
+    return null; // network/timeout/abort — caller falls back to disk
+  }
+}
 
-async function load(): Promise<Loaded> {
-  if (cached) return cached;
+function parseSnapshotAt(metaText: string): string | null {
+  try {
+    const meta = JSON.parse(metaText) as { snapshotAt?: string };
+    if (meta.snapshotAt && !Number.isNaN(Date.parse(meta.snapshotAt))) {
+      return meta.snapshotAt;
+    }
+  } catch {
+    // malformed meta — treat as absent
+  }
+  return null;
+}
+
+/** The pre-existing on-disk path: bundled snapshot + sidecar meta, mtime last. */
+async function readLocalSnapshot(): Promise<{ buf: string; snapshotAt: string }> {
   const DATA_PATH = await resolveDataPath();
   const [buf, info] = await Promise.all([
     readFile(DATA_PATH, "utf-8"),
@@ -63,15 +103,51 @@ async function load(): Promise<Loaded> {
   const metaPath = await resolveFirst(META_CANDIDATES);
   if (metaPath) {
     try {
-      const metaBuf = await readFile(metaPath, "utf-8");
-      const meta = JSON.parse(metaBuf) as { snapshotAt?: string };
-      if (meta.snapshotAt && !Number.isNaN(Date.parse(meta.snapshotAt))) {
-        snapshotAt = meta.snapshotAt;
-      }
+      const fromMeta = parseSnapshotAt(await readFile(metaPath, "utf-8"));
+      if (fromMeta) snapshotAt = fromMeta;
     } catch {
-      // ignore malformed meta; fall back to mtime
+      // ignore unreadable meta; fall back to mtime
     }
   }
+  return { buf, snapshotAt };
+}
+
+type Loaded = {
+  rows: TableRow[];
+  raw: EnrichedMarket[];
+  snapshotAt: string;
+  /** Which source served this copy — surfaced by /api/health for debugging. */
+  source: "remote" | "disk";
+};
+
+let cached: (Loaded & { at: number }) | null = null;
+
+async function load(): Promise<Loaded> {
+  if (cached && Date.now() - cached.at < SNAPSHOT_TTL_S * 1_000) return cached;
+
+  // Data and meta are fetched together and adopted only as a PAIR: pairing a
+  // fresh snapshot with a stale age (or vice versa) would make the freshness
+  // chip lie, which is worse than serving the older disk copy.
+  const [remoteData, remoteMeta] = await Promise.all([
+    fetchRemote("enriched-markets.json"),
+    fetchRemote("snapshot-meta.json"),
+  ]);
+  const remoteAt = remoteMeta ? parseSnapshotAt(remoteMeta) : null;
+
+  let buf: string;
+  let snapshotAt: string;
+  let source: Loaded["source"];
+  if (remoteData && remoteAt) {
+    buf = remoteData;
+    snapshotAt = remoteAt;
+    source = "remote";
+  } else {
+    const local = await readLocalSnapshot();
+    buf = local.buf;
+    snapshotAt = local.snapshotAt;
+    source = "disk";
+  }
+
   const parsed: unknown = JSON.parse(buf);
   if (!Array.isArray(parsed)) {
     throw new Error("enriched-markets.json: expected top-level array");
@@ -102,8 +178,18 @@ async function load(): Promise<Loaded> {
       `[data] dropped ${dropped}/${parsed.length} markets failing schema — sample: ${dropSample.join(" | ")}`,
     );
   }
+  if (raw.length === 0) {
+    // An empty parse would blank the whole site. If the remote copy is somehow
+    // truncated/garbage, prefer the last good in-process copy over serving
+    // nothing; only when there's no cache at all do we surface the failure.
+    if (cached) {
+      console.warn("[data] snapshot parsed to 0 markets — keeping prior copy");
+      return cached;
+    }
+    throw new Error(`enriched-markets.json (${source}): parsed to 0 markets`);
+  }
   const rows = raw.map(projectToRow);
-  cached = { rows, raw, snapshotAt };
+  cached = { rows, raw, snapshotAt, source, at: Date.now() };
   return cached;
 }
 
@@ -117,9 +203,13 @@ export async function getRawMarkets(): Promise<EnrichedMarket[]> {
   return raw;
 }
 
-export async function getSnapshotMeta(): Promise<{ snapshotAt: string; total: number }> {
-  const { snapshotAt, rows } = await load();
-  return { snapshotAt, total: rows.length };
+export async function getSnapshotMeta(): Promise<{
+  snapshotAt: string;
+  total: number;
+  source: "remote" | "disk";
+}> {
+  const { snapshotAt, rows, source } = await load();
+  return { snapshotAt, total: rows.length, source };
 }
 
 /** Gamma occasionally suffixes a market slug with a volatile run of numeric ids

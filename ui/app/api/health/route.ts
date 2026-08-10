@@ -26,6 +26,10 @@ export async function GET() {
         status: fresh ? "ok" : "stale",
         snapshotAt: snap.snapshotAt,
         snapshotAgeSeconds: Math.round(ageMs / 1000),
+        // "remote" = fetched live from the pipeline's committed snapshot;
+        // "disk" = the fetch failed and we're serving the last-built copy,
+        // which is the signal that data has stopped refreshing between deploys.
+        snapshotSource: snap.source,
         pricesAt,
         markets: snap.total,
         elapsedMs: Date.now() - startedAt,

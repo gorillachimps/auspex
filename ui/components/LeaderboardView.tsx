@@ -22,6 +22,11 @@ import { LoadingState } from "./ui/LoadingState";
  */
 
 const LB_HOST = "https://lb-api.polymarket.com";
+// Win-rate stats live in the repo (committed daily by the leaderboard-stats
+// workflow) and are read straight from the raw endpoint, so that commit is
+// deploy-free. `/leaderboard-stats.json` from the last build is the fallback.
+const LB_STATS_URL =
+  "https://raw.githubusercontent.com/gorillachimps/auspex/main/ui/public/leaderboard-stats.json";
 
 type LbEntry = {
   proxyWallet: string;
@@ -99,9 +104,16 @@ export function LeaderboardView() {
         const [pr, vr, sr] = await Promise.all([
           fetch(`${LB_HOST}/profit`, { cache: "no-store" }),
           fetch(`${LB_HOST}/volume`, { cache: "no-store" }),
-          // Our CI-built win-rate file. Best-effort — absent before the first
-          // cron run; the cards just omit win-rate. Never fails the leaderboard.
-          fetch(`/leaderboard-stats.json`, { cache: "no-store" }).catch(() => null),
+          // Our CI-built win-rate file. Fetched from the repo's raw endpoint
+          // so the daily stats commit doesn't need a deploy (see
+          // ui/vercel.json), falling back to the copy bundled at last build.
+          // Best-effort throughout — absent before the first cron run, and the
+          // cards simply omit win-rate. Never fails the leaderboard.
+          fetch(LB_STATS_URL, { cache: "no-store" })
+            .then((r) => (r.ok ? r : fetch(`/leaderboard-stats.json`, { cache: "no-store" })))
+            .catch(() =>
+              fetch(`/leaderboard-stats.json`, { cache: "no-store" }).catch(() => null),
+            ),
         ]);
         if (!pr.ok || !vr.ok) {
           throw new Error(`HTTP ${pr.ok ? vr.status : pr.status}`);
