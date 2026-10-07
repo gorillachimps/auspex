@@ -99,7 +99,7 @@ function metaDescription(row: NonNullable<Awaited<ReturnType<typeof getMarketByS
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const row = await getMarketBySlug(slug);
-  if (!row) return { title: "Market not found · Auspex" };
+  if (!row) notFound();
   return {
     title: `${row.question} · Auspex`,
     description: metaDescription(row),

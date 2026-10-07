@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { TopNav } from "@/components/TopNav";
 import { Footer } from "@/components/Footer";
@@ -26,7 +27,14 @@ export default async function WatchlistsPage() {
             Markets you&apos;ve starred in the screener. Sortable, with the same
             split-bar Δ + RC progress bars.
           </p>
-          <WatchlistsView rows={ranked} />
+          {/* Suspense boundary required: WatchlistsView reads useSearchParams,
+              and the build refuses to prerender a page where that hook has no
+              boundary above it. The root loading.tsx used to supply one
+              implicitly; it is now scoped to the home route (see
+              app/(home)/loading.tsx), so each page declares its own. */}
+          <Suspense fallback={null}>
+            <WatchlistsView rows={ranked} />
+          </Suspense>
         </div>
       </main>
       <Footer />

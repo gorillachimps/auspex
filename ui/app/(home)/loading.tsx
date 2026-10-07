@@ -1,3 +1,11 @@
+// Home-screener skeleton. Lives in the (home) route group ON PURPOSE: a
+// loading.tsx at app/ wraps every route in a Suspense boundary, which makes
+// Next stream a 200 shell before the page runs. A page that then calls
+// notFound() can no longer change the status (headers already sent), so dead
+// market URLs returned 200 + "not found" and Google flagged ~4,000 of them as
+// Soft 404 (GSC, 2026-10-07). Scoped here, /markets, /embed and the rest
+// render without a boundary above them and get a real 404.
+// See node_modules/next/dist/docs/.../loading.md "Status Codes".
 import { TopNav } from "@/components/TopNav";
 import { Footer } from "@/components/Footer";
 
