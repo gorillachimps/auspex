@@ -63,7 +63,12 @@ const REMOTE_TIMEOUT_MS = 8_000;
 // in-process TTL. The in-process cache used to be effectively permanent because
 // a deploy (and thus a fresh lambda) was the only way data ever changed; with
 // deploys now rare, a warm instance has to expire its own copy.
-const SNAPSHOT_TTL_S = 300;
+// 1800 s: the pipeline commits a new snapshot every 4 h, so a 5-minute TTL
+// bought nothing but a JSON.parse + schema pass over ~5 MB every 5 minutes per
+// warm instance — Fluid Active CPU on the Hobby plan (4 h / rolling 30 d) hit
+// 75% on 2026-10-14. Freshness is still bounded by the 4 h cron, and the UI
+// shows the snapshot age; the live-price overlay is separate and unaffected.
+const SNAPSHOT_TTL_S = 1800;
 
 async function fetchRemote(name: string): Promise<string | null> {
   try {

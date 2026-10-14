@@ -42,7 +42,7 @@ async function fetchAllTickers(): Promise<LivePrices | null> {
       // rarer than the original 25 s (Fluid-CPU cap, 2026-07-26) while the
       // client's own polling repaints real users within seconds of mount.
       const r = await fetch(host, {
-        next: { revalidate: 120 },
+        next: { revalidate: 300 },
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (!r.ok) continue;
