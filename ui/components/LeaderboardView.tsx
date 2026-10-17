@@ -8,10 +8,14 @@ import { EmptyState } from "./ui/EmptyState";
 import { LoadingState } from "./ui/LoadingState";
 
 /**
- * Polymarket's public leaderboard (https://lb-api.polymarket.com):
- *   - /profit  → top realized P&L all-time
- *   - /volume  → top notional traded all-time
- * Both return `{ proxyWallet, pseudonym, name, amount, … }` pre-sorted desc.
+ * Polymarket's public leaderboard, data-api v2
+ * (https://data-api.polymarket.com/v2/leaderboard — lb-api.polymarket.com
+ * was retired with HTTP 410 on 2026-10-16):
+ *   - sort_by=PNL,    time_period=all → top realized P&L all-time
+ *   - sort_by=VOLUME, time_period=all → top notional traded all-time
+ * Rows come back as `{ data: [{ rank, user_id, pnl, volume, user_name, … }] }`
+ * pre-sorted desc; parseList() maps them onto the LbEntry shape the rest of
+ * this component was written against.
  * We fetch BOTH once and merge by wallet so each card shows profit AND volume
  * AND a return-on-volume efficiency read — plus win-rate from our own CI-built
  * /leaderboard-stats.json (the public API has no win-rate; it needs each
@@ -21,7 +25,10 @@ import { LoadingState } from "./ui/LoadingState";
  * already-fetched data client-side (no refetch).
  */
 
-const LB_HOST = "https://lb-api.polymarket.com";
+const LB_V2 = "https://data-api.polymarket.com/v2/leaderboard";
+const LB_LIMIT = 100;
+const lbUrl = (sortBy: "PNL" | "VOLUME") =>
+  `${LB_V2}?sort_by=${sortBy}&time_period=all&limit=${LB_LIMIT}`;
 // Win-rate stats live in the repo (committed daily by the leaderboard-stats
 // workflow) and are read straight from the raw endpoint, so that commit is
 // deploy-free. `/leaderboard-stats.json` from the last build is the fallback.
@@ -70,18 +77,30 @@ const ZERO: State = {
   error: null,
 };
 
-function parseList(data: unknown): LbEntry[] {
-  if (!Array.isArray(data)) return [];
-  return data
-    .filter(
-      (e): e is LbEntry =>
-        !!e &&
-        typeof e === "object" &&
-        typeof (e as LbEntry).proxyWallet === "string" &&
-        typeof (e as LbEntry).amount === "number" &&
-        Number.isFinite((e as LbEntry).amount),
-    )
-    .slice(0, 100);
+type LbV2Row = {
+  user_id?: unknown;
+  pnl?: unknown;
+  volume?: unknown;
+  user_name?: unknown;
+};
+
+/** v2 `{ data: [...] }` → LbEntry[]; `amount` is pnl or volume per list. */
+function parseList(json: unknown, kind: Mode): LbEntry[] {
+  const rows = json && typeof json === "object" ? (json as { data?: unknown }).data : null;
+  if (!Array.isArray(rows)) return [];
+  const out: LbEntry[] = [];
+  for (const r of rows as LbV2Row[]) {
+    if (!r || typeof r !== "object" || typeof r.user_id !== "string") continue;
+    const amount = Number(kind === "profit" ? r.pnl : r.volume);
+    if (!Number.isFinite(amount)) continue;
+    out.push({
+      proxyWallet: r.user_id.toLowerCase(),
+      amount,
+      name: typeof r.user_name === "string" && r.user_name ? r.user_name : undefined,
+    });
+    if (out.length >= LB_LIMIT) break;
+  }
+  return out;
 }
 
 /** Return on volume = realized profit ÷ notional traded. Coarse efficiency
@@ -102,8 +121,8 @@ export function LeaderboardView() {
     (async () => {
       try {
         const [pr, vr, sr] = await Promise.all([
-          fetch(`${LB_HOST}/profit`, { cache: "no-store" }),
-          fetch(`${LB_HOST}/volume`, { cache: "no-store" }),
+          fetch(lbUrl("PNL"), { cache: "no-store" }),
+          fetch(lbUrl("VOLUME"), { cache: "no-store" }),
           // Our CI-built win-rate file. Fetched from the repo's raw endpoint
           // so the daily stats commit doesn't need a deploy (see
           // ui/vercel.json), falling back to the copy bundled at last build.
@@ -132,8 +151,8 @@ export function LeaderboardView() {
         }
         if (cancelled) return;
         setState({
-          profit: parseList(pd),
-          volume: parseList(vd),
+          profit: parseList(pd, "profit"),
+          volume: parseList(vd, "volume"),
           stats,
           loading: false,
           error: null,
@@ -221,7 +240,7 @@ export function LeaderboardView() {
           </TabButton>
         </div>
         <a
-          href={`${LB_HOST}/${mode}`}
+          href={lbUrl(mode === "profit" ? "PNL" : "VOLUME")}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 text-[11px] text-muted hover:text-foreground"

@@ -1,7 +1,7 @@
 /**
  * Precompute per-wallet stats for the leaderboard → ui/public/leaderboard-stats.json.
  *
- * Runs in CI (.github/workflows/leaderboard-stats.yml, every 6h). The public
+ * Runs in CI (.github/workflows/leaderboard-stats.yml, daily). The public
  * leaderboard API only gives profit/volume per wallet; win-rate + sample size
  * need each wallet's full /trades history — a ~80-wallet fan-out that does NOT
  * belong in a per-render client fetch, so we batch it here on a schedule and
@@ -16,7 +16,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { computeWalletPnl, type Trade } from "../lib/walletPnl";
 
-const LB = "https://lb-api.polymarket.com";
 const DATA = "https://data-api.polymarket.com";
 const UA = "auspex-leaderboard-stats/1.0 (+https://auspex.to)";
 const PAGE_LIMIT = 500;
@@ -37,21 +36,29 @@ async function getJson(url: string): Promise<unknown> {
   return r.json();
 }
 
-/** Union of the top-profit and top-volume leaderboards (deduped, valid addrs). */
+/** Union of the top-profit and top-volume leaderboards (deduped, valid addrs).
+ *  data-api v2 (lb-api.polymarket.com answered 410 "retired" from 2026-10-16):
+ *  `{ data: [{ user_id, pnl, volume, user_name, … }] }`, params sort_by=PNL|VOLUME,
+ *  time_period=day|week|month|all. Same lists LeaderboardView fetches. */
+const LB_LIMIT = 100;
+const lbUrl = (sortBy: "PNL" | "VOLUME") =>
+  `${DATA}/v2/leaderboard?sort_by=${sortBy}&time_period=all&limit=${LB_LIMIT}`;
+
 async function leaderboardWallets(): Promise<string[]> {
-  const [profit, volume] = await Promise.all([
-    getJson(`${LB}/profit`),
-    getJson(`${LB}/volume`),
-  ]);
+  const [profit, volume] = await Promise.all([getJson(lbUrl("PNL")), getJson(lbUrl("VOLUME"))]);
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const list of [profit, volume]) {
+  for (const json of [profit, volume]) {
+    const list = json && typeof json === "object" ? (json as { data?: unknown }).data : null;
     if (!Array.isArray(list)) continue;
     for (const e of list) {
-      const w = e && typeof e === "object" ? (e as { proxyWallet?: unknown }).proxyWallet : null;
-      if (typeof w === "string" && ADDR_RE.test(w) && !seen.has(w)) {
-        seen.add(w);
-        out.push(w);
+      const w = e && typeof e === "object" ? (e as { user_id?: unknown }).user_id : null;
+      // Lower-cased so the client's lookup (parseList lower-cases user_id)
+      // and these keys agree whatever case the API returns.
+      const addr = typeof w === "string" && ADDR_RE.test(w) ? w.toLowerCase() : null;
+      if (addr && !seen.has(addr)) {
+        seen.add(addr);
+        out.push(addr);
       }
     }
   }
